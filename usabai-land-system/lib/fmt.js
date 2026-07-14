@@ -6,6 +6,14 @@ export const fmt = (n, cur = "LAK") =>
 export const fmtM = (n) =>
   n == null ? "—" : (n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 0 }) + " ລ້ານ";
 
+// ---- ຫຼາຍສະກຸນ ----
+export const FX_DEFAULT = { LAK: 1, THB: 620, USD: 21500 };
+// ແປງ 1 ຈຳນວນ → ກີບ ດ້ວຍ map ອັດຕາ (rate_to_lak)
+export const toLAK = (n, cur, fx = FX_DEFAULT) => Number(n || 0) * (fx[cur] ?? 1);
+// format ຕາມສະກຸນ: ກີບ = ຫຍໍ້ເປັນ "ລ້ານ", ບາດ/ໂດລາ = ເຕັມ + ສັນຍາລັກ
+export const fmtMoney = (n, cur = "LAK") =>
+  cur === "LAK" ? fmtM(n) + " ₭" : fmt(n, cur);
+
 export const fdate = (s) => {
   if (!s) return "—";
   const d = new Date(s);
