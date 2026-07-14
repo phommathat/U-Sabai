@@ -9,6 +9,7 @@ function Payments() {
   const { projectId } = useApp();
   const [inst, setInst] = useState([]);
   const [contracts, setContracts] = useState([]);
+  const [hist, setHist] = useState([]);
   const [form, setForm] = useState(null);
   const [tab, setTab] = useState("due");
 
@@ -18,11 +19,16 @@ function Payments() {
       .select("id,contract_no,currency, customers(full_name)").eq("project_id", projectId);
     setContracts(cons || []);
     const ids = (cons || []).map((c) => c.id);
-    if (!ids.length) return setInst([]);
+    if (!ids.length) { setInst([]); setHist([]); return; }
     const { data: ins } = await supabase.from("installments")
       .select("*, payments(id, amount_received)").in("contract_id", ids)
       .order("due_date", { ascending: true, nullsFirst: false }).limit(500);
     setInst(ins || []);
+    const { data: pays } = await supabase.from("payments")
+      .select("id,pay_date,amount_received,currency,channel,note,contracts!inner(contract_no,project_id,customers(full_name))")
+      .eq("contracts.project_id", projectId).neq("pay_date", "1900-01-01")
+      .order("pay_date", { ascending: false }).limit(1000);
+    setHist(pays || []);
   };
   useEffect(() => { load(); }, [projectId]);
 
@@ -58,11 +64,20 @@ function Payments() {
     <>
       <div className="flex gap-2 items-center mb-4 flex-wrap">
         <h2 className="text-lg font-bold text-navy mr-auto">ການຊຳລະເງິນ</h2>
-        {[["due", "ຄ້າງ/ໃກ້ຄົບ"], ["overdue", "ຄ້າງຊຳລະ"], ["paid", "ຈ່າຍແລ້ວ"], ["all", "ທັງໝົດ"]].map(([k, l]) => (
+        {[["due", "ຄ້າງ/ໃກ້ຄົບ"], ["overdue", "ຄ້າງຊຳລະ"], ["paid", "ຈ່າຍແລ້ວ"], ["all", "ທັງໝົດ"], ["history", "ປະຫວັດຮັບເງິນ"]].map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-3 py-1.5 rounded-full text-xs border ${tab === k ? "bg-navy text-white border-navy" : "bg-white border-slate-300"}`}>{l}</button>
         ))}
       </div>
+
+      {tab === "history" ? (
+        <Table cols={["ວັນທີຮັບ", "ສັນຍາ", "ລູກຄ້າ", "ຈຳນວນຮັບ", "ຊ່ອງທາງ", "ໝາຍເຫດ"]}
+          empty="ຍັງບໍ່ມີປະຫວັດການຮັບເງິນ"
+          rows={hist.slice(0, 500).map((p) => [
+            fdate(p.pay_date), p.contracts?.contract_no, p.contracts?.customers?.full_name,
+            <b key="a">{fmt(p.amount_received, p.currency)}</b>, p.channel || "—", p.note || "—",
+          ])} />
+      ) : (
       <Table cols={["ສັນຍາ", "ລູກຄ້າ", "ງວດ", "ຄົບກຳນົດ", "ຕາມກຳນົດ", "ຮັບແລ້ວ", "ສະຖານະ", ""]}
         rows={filtered.slice(0, 120).map((i) => [
           i.c?.contract_no, i.c?.customers?.full_name,
@@ -82,6 +97,7 @@ function Payments() {
             <a key="r" className="btn-o !py-1 !px-3 text-xs" href={`/print/receipt/${i.payments[i.payments.length - 1].id}`} target="_blank">🖨 ໃບຮັບເງິນ</a>
           ) : null,
         ])} />
+      )}
 
       <Modal open={!!form} title="💰 ບັນທຶກຮັບເງິນ" onClose={() => setForm(null)}>
         {form && (
