@@ -7,7 +7,7 @@ import { fmt } from "@/lib/fmt";
 
 const LOT_CLS = {
   available: "bg-emerald-50 text-emerald-700 border-emerald-300",
-  reserved: "bg-slate-600 text-white border-slate-700",
+  reserved: "bg-slate-100 text-slate-600 border-slate-300",
   sold: "bg-red-50 text-red-700 border-red-300",
 };
 const LOT_LAO = { available: "ຫວ່າງ", reserved: "ຈອງ", sold: "ຂາຍແລ້ວ" };
@@ -42,7 +42,7 @@ function Lots() {
         <h2 className="text-lg font-bold text-navy">ຜັງຕອນດິນ ({lots.length} ຕອນ)</h2>
         <div className="flex gap-2 items-center text-xs">
           <span className="flex items-center gap-1"><i className="w-3 h-3 rounded bg-emerald-500 inline-block" />ຫວ່າງ</span>
-          <span className="flex items-center gap-1"><i className="w-3 h-3 rounded bg-slate-600 inline-block" />ຈອງ</span>
+          <span className="flex items-center gap-1"><i className="w-3 h-3 rounded bg-slate-400 inline-block" />ຈອງ</span>
           <span className="flex items-center gap-1"><i className="w-3 h-3 rounded bg-red-500 inline-block" />ຂາຍແລ້ວ</span>
           <button className="btn-p ml-3" onClick={() => setForm({ status: "available", currency: "THB" })}>+ ເພີ່ມຕອນດິນ</button>
         </div>
@@ -68,7 +68,7 @@ function Lots() {
           <div className="space-y-2 text-sm">
             <div className="flex justify-between border-b border-dashed pb-2"><span>ເນື້ອທີ່</span><b>{Number(sel.size_sqm)} ຕລມ</b></div>
             <div className="flex justify-between border-b border-dashed pb-2"><span>ລາຄາຕັ້ງ</span><b>{fmt(sel.list_price, sel.currency)}</b></div>
-            <div className="flex justify-between border-b border-dashed pb-2"><span>ສະຖານະ</span><Badge color={sel.status === "sold" ? "red" : sel.status === "reserved" ? "graydark" : "green"}>{LOT_LAO[sel.status]}</Badge></div>
+            <div className="flex justify-between border-b border-dashed pb-2"><span>ສະຖານະ</span><Badge color={sel.status === "sold" ? "red" : sel.status === "reserved" ? "gray" : "green"}>{LOT_LAO[sel.status]}</Badge></div>
             <div className="flex justify-between border-b border-dashed pb-2"><span>ໃບຕາດິນແມ່</span><b>{sel.parent_deed_no || "—"}</b></div>
             <button className="btn-o w-full mt-2" onClick={() => { setForm(sel); setSel(null); }}>ແກ້ໄຂ</button>
           </div>
