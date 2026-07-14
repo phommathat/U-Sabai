@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Lao:wght@400;500;600;700&display=swap');
+
+body { @apply bg-slate-100 text-slate-800 font-lao text-sm; }
+
+.card { @apply bg-white border border-slate-200 rounded-xl p-4; }
+.btn { @apply px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-50; }
+.btn-p { @apply btn bg-navy text-white hover:bg-navy-2; }
+.btn-o { @apply btn bg-white text-navy border border-slate-300 hover:bg-slate-50; }
+.inp { @apply w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white; }
+.lbl { @apply block text-xs text-slate-500 mb-1; }
+.th { @apply text-left text-xs text-slate-500 font-semibold px-3 py-2 border-b border-slate-200 whitespace-nowrap; }
+.td { @apply px-3 py-2 border-b border-slate-100 align-middle; }
+.badge { @apply inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap; }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+}
