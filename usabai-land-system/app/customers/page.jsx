@@ -16,9 +16,15 @@ function Customers() {
 
   const save = async (e) => {
     e.preventDefault();
-    const { error } = form.id
-      ? await supabase.from("customers").update(form).eq("id", form.id)
-      : await supabase.from("customers").insert(form);
+    let error;
+    if (form.id) {
+      ({ error } = await supabase.from("customers").update(form).eq("id", form.id));
+    } else {
+      // ອອກລະຫັດອັດຕະໂນມັດ C00001 (ຕໍ່ຈາກລ່າສຸດ, atomic ກັນເລກຊ້ຳ)
+      const { data: code, error: numErr } = await supabase.rpc("next_customer_code");
+      if (numErr) return alert("ອອກລະຫັດລູກຄ້າບໍ່ໄດ້: " + numErr.message);
+      ({ error } = await supabase.from("customers").insert({ ...form, code }));
+    }
     if (error) alert("ຜິດພາດ: " + error.message);
     else { setForm(null); load(); }
   };
@@ -42,7 +48,11 @@ function Customers() {
       <Modal open={!!form} title={form?.id ? "ແກ້ໄຂລູກຄ້າ" : "ເພີ່ມລູກຄ້າ"} onClose={() => setForm(null)}>
         {form && (
           <form onSubmit={save} className="grid grid-cols-2 gap-3">
-            <Field label="ລະຫັດ *"><input className="inp" required value={form.code || ""} onChange={(e) => setForm({ ...form, code: e.target.value })} /></Field>
+            <Field label="ລະຫັດ">
+              {form.id
+                ? <input className="inp bg-slate-50" disabled value={form.code || ""} />
+                : <input className="inp bg-slate-50" disabled value="ອອກອັດຕະໂນມັດ (C000XX)" />}
+            </Field>
             <Field label="ຊື່ ແລະ ນາມສະກຸນ *"><input className="inp" required value={form.full_name || ""} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></Field>
             <Field label="ເບີໂທ"><input className="inp" value={form.tel || ""} onChange={(e) => setForm({ ...form, tel: e.target.value })} /></Field>
             <Field label="ເລກບັດປະຈຳຕົວ"><input className="inp" value={form.id_card_no || ""} onChange={(e) => setForm({ ...form, id_card_no: e.target.value })} /></Field>
