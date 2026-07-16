@@ -17,17 +17,18 @@ const Row = ({ l, children }) => (
 );
 
 function Lots() {
-  const { projectId } = useApp();
+  const { projectId, projectIds, projects } = useApp();
   const [lots, setLots] = useState([]);
   const [sel, setSel] = useState(null);      // ຕອນທີ່ click
   const [detail, setDetail] = useState(null); // ຂໍ້ມູນຈາກ v_lot_detail
   const [form, setForm] = useState(null);
 
   const load = () =>
-    projectId &&
-    supabase.from("lots").select("*").eq("project_id", projectId).order("code")
+    projectIds.length &&
+    supabase.from("lots").select("*").in("project_id", projectIds).order("code")
       .then(({ data }) => setLots(data || []));
-  useEffect(() => { load(); }, [projectId]);
+  useEffect(() => { load(); }, [projectIds]);
+  const pcode = (id) => projects.find((p) => p.id === id)?.code || "";
 
   // click ຕອນ → ດຶງລາຍລະອຽດ (ສັນຍາ/ລູກຄ້າ/ຍອດຊຳລະ/ໃບຕາດິນ/ໃບຈອງ)
   const open = async (l) => {
@@ -38,7 +39,7 @@ function Lots() {
 
   const save = async (e) => {
     e.preventDefault();
-    const row = { ...form, project_id: projectId };
+    const row = { ...form, project_id: form.project_id || projectId }; // ແກ້ໄຂຕອນເກົ່າ = ຄົງໂຄງການເດີມ
     const { error } = row.id
       ? await supabase.from("lots").update(row).eq("id", row.id)
       : await supabase.from("lots").insert(row);
@@ -46,7 +47,9 @@ function Lots() {
     else { setForm(null); load(); }
   };
 
-  const zones = [...new Set(lots.map((l) => l.zone || "?"))].sort();
+  // ຫຼາຍໂຄງການ → ຈັດກຸ່ມເປັນ "P01 · ໂຊນ A" ກັນລະຫັດຕອນຊ້ຳກັນຂ້າມໂຄງການ
+  const zkey = (l) => (projectIds.length > 1 ? `${pcode(l.project_id)} · ` : "") + (l.zone || "?");
+  const zones = [...new Set(lots.map(zkey))].sort();
   const d = detail;
 
   return (
@@ -57,15 +60,17 @@ function Lots() {
           <span className="flex items-center gap-1"><i className="w-3 h-3 rounded bg-emerald-500 inline-block" />ຫວ່າງ</span>
           <span className="flex items-center gap-1"><i className="w-3 h-3 rounded bg-slate-400 inline-block" />ຈອງ</span>
           <span className="flex items-center gap-1"><i className="w-3 h-3 rounded bg-red-500 inline-block" />ຂາຍແລ້ວ</span>
-          <button className="btn-p ml-3" onClick={() => setForm({ status: "available", currency: "THB" })}>+ ເພີ່ມຕອນດິນ</button>
+          <button className="btn-p ml-3" onClick={() => projectId
+            ? setForm({ status: "available", currency: "THB" })
+            : alert("ກະລຸນາເລືອກໂຄງການດຽວກ່ອນ ຈຶ່ງເພີ່ມຕອນດິນໄດ້")}>+ ເພີ່ມຕອນດິນ</button>
         </div>
       </div>
 
       {zones.map((z) => (
         <div key={z} className="card mb-4">
-          <div className="text-xs text-slate-500 mb-2 font-semibold">ໂຊນ {z} — {lots.filter((l) => (l.zone || "?") === z).length} ຕອນ</div>
+          <div className="text-xs text-slate-500 mb-2 font-semibold">ໂຊນ {z} — {lots.filter((l) => zkey(l) === z).length} ຕອນ</div>
           <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(80px,1fr))" }}>
-            {lots.filter((l) => (l.zone || "?") === z).map((l) => (
+            {lots.filter((l) => zkey(l) === z).map((l) => (
               <button key={l.id} onClick={() => open(l)}
                 className={`rounded-lg border p-2 text-center hover:scale-105 transition ${LOT_CLS[l.status]}`}>
                 <div className="font-bold text-[13px]">{l.code}</div>
