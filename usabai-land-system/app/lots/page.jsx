@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Shell, { useApp } from "@/components/Shell";
 import { Badge, Modal, Field } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
-import { fmt } from "@/lib/fmt";
+import { fmt, fdate, DEED_STAGE } from "@/lib/fmt";
 
 const LOT_CLS = {
   available: "bg-emerald-50 text-emerald-700 border-emerald-300",
@@ -12,10 +12,15 @@ const LOT_CLS = {
 };
 const LOT_LAO = { available: "ຫວ່າງ", reserved: "ຈອງ", sold: "ຂາຍແລ້ວ" };
 
+const Row = ({ l, children }) => (
+  <div className="flex justify-between border-b border-dashed pb-2 gap-4"><span className="text-slate-500 shrink-0">{l}</span><b className="text-right">{children ?? "—"}</b></div>
+);
+
 function Lots() {
   const { projectId } = useApp();
   const [lots, setLots] = useState([]);
-  const [sel, setSel] = useState(null);
+  const [sel, setSel] = useState(null);      // ຕອນທີ່ click
+  const [detail, setDetail] = useState(null); // ຂໍ້ມູນຈາກ v_lot_detail
   const [form, setForm] = useState(null);
 
   const load = () =>
@@ -23,6 +28,13 @@ function Lots() {
     supabase.from("lots").select("*").eq("project_id", projectId).order("code")
       .then(({ data }) => setLots(data || []));
   useEffect(() => { load(); }, [projectId]);
+
+  // click ຕອນ → ດຶງລາຍລະອຽດ (ສັນຍາ/ລູກຄ້າ/ຍອດຊຳລະ/ໃບຕາດິນ/ໃບຈອງ)
+  const open = async (l) => {
+    setSel(l); setDetail(null);
+    const { data } = await supabase.from("v_lot_detail").select("*").eq("lot_id", l.id).limit(1);
+    setDetail(data?.[0] || {});
+  };
 
   const save = async (e) => {
     e.preventDefault();
@@ -35,6 +47,7 @@ function Lots() {
   };
 
   const zones = [...new Set(lots.map((l) => l.zone || "?"))].sort();
+  const d = detail;
 
   return (
     <>
@@ -53,7 +66,7 @@ function Lots() {
           <div className="text-xs text-slate-500 mb-2 font-semibold">ໂຊນ {z} — {lots.filter((l) => (l.zone || "?") === z).length} ຕອນ</div>
           <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(80px,1fr))" }}>
             {lots.filter((l) => (l.zone || "?") === z).map((l) => (
-              <button key={l.id} onClick={() => setSel(l)}
+              <button key={l.id} onClick={() => open(l)}
                 className={`rounded-lg border p-2 text-center hover:scale-105 transition ${LOT_CLS[l.status]}`}>
                 <div className="font-bold text-[13px]">{l.code}</div>
                 <div className="text-[10px] opacity-75">{Number(l.size_sqm)} ຕລມ</div>
@@ -63,14 +76,58 @@ function Lots() {
         </div>
       ))}
 
-      <Modal open={!!sel} title={`ຕອນ ${sel?.code}`} onClose={() => setSel(null)}>
-        {sel && (
+      <Modal open={!!sel} title={`ຕອນ ${sel?.code} — ${LOT_LAO[sel?.status] || ""}`} onClose={() => setSel(null)}>
+        {sel && !d && <div className="text-center text-slate-400 py-6">ກຳລັງໂຫຼດ...</div>}
+        {sel && d && (
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between border-b border-dashed pb-2"><span>ເນື້ອທີ່</span><b>{Number(sel.size_sqm)} ຕລມ</b></div>
-            <div className="flex justify-between border-b border-dashed pb-2"><span>ລາຄາຕັ້ງ</span><b>{fmt(sel.list_price, sel.currency)}</b></div>
-            <div className="flex justify-between border-b border-dashed pb-2"><span>ສະຖານະ</span><Badge color={sel.status === "sold" ? "red" : sel.status === "reserved" ? "gray" : "green"}>{LOT_LAO[sel.status]}</Badge></div>
-            <div className="flex justify-between border-b border-dashed pb-2"><span>ໃບຕາດິນແມ່</span><b>{sel.parent_deed_no || "—"}</b></div>
-            <button className="btn-o w-full mt-2" onClick={() => { setForm(sel); setSel(null); }}>ແກ້ໄຂ</button>
+            <Row l="ເນື້ອທີ່">{Number(sel.size_sqm)} ຕລມ</Row>
+            <Row l="ລາຄາຕັ້ງ">{fmt(sel.list_price, sel.currency)}</Row>
+            <Row l="ສະຖານະ"><Badge color={sel.status === "sold" ? "red" : sel.status === "reserved" ? "gray" : "green"}>{LOT_LAO[sel.status]}</Badge></Row>
+
+            {/* ຂາຍແລ້ວ: ລູກຄ້າ + ຍອດຊຳລະ + ໃບຕາດິນ */}
+            {sel.status === "sold" && d.contract_id && (<>
+              <Row l="ລູກຄ້າ">{d.full_name}</Row>
+              <Row l="ເບີໂທ">{d.tel}</Row>
+              <Row l="ເລກສັນຍາ">{d.contract_no} ({fdate(d.sign_date)})</Row>
+              <Row l="ຊຳລະແລ້ວ">
+                <span>{fmt(d.total_paid, d.contract_currency)} <span className="text-brand-green">({d.pct_paid || 0}%)</span></span>
+              </Row>
+              <Row l="ຍອດຄ້າງ">
+                {(d.pct_paid || 0) >= 100
+                  ? <span className="text-brand-green">ຄົບແລ້ວ ✓</span>
+                  : <span className="text-brand-red">{fmt(d.balance, d.contract_currency)}</span>}
+              </Row>
+              <Row l="ໃບຕາດິນ">
+                <Badge color={d.deed_stage === "handed_over" ? "green" : d.deed_stage ? "blue" : "gray"}>
+                  {DEED_STAGE[d.deed_stage] || (d.deed_eligible ? "ຮອດເກນ 20% — ຍັງບໍ່ເລີ່ມແລ່ນ" : "ຍັງບໍ່ຮອດເກນ 20%")}
+                </Badge>
+              </Row>
+              {d.new_deed_no && <Row l="ເລກໃບຕາດິນໃໝ່">{d.new_deed_no}</Row>}
+            </>)}
+
+            {/* ຈອງ: ຂໍ້ມູນຜູ້ຈອງ */}
+            {sel.status === "reserved" && d.booking_id && (<>
+              <Row l="ຜູ້ຈອງ">{d.booking_customer_name}</Row>
+              <Row l="ເບີໂທ">{d.booking_customer_tel}</Row>
+              <Row l="ເລກໃບຈອງ">{d.booking_no} ({fdate(d.booking_date)})</Row>
+              <Row l="ເງິນມັດຈຳ">{fmt(d.deposit_amount)}</Row>
+              <Row l="ກຳນົດເຮັດສັນຍາ">{fdate(d.contract_due_date)}</Row>
+            </>)}
+
+            {/* ປຸ່ມຕາມສະຖານະ */}
+            <div className="flex gap-2 pt-3">
+              {sel.status === "available" && (<>
+                <a className="btn-p flex-1 text-center" href={`/bookings?lot=${sel.id}`}>📌 ດຳເນີນການຈອງ</a>
+                <a className="btn-p flex-1 text-center" href={`/contracts?lot=${sel.id}`}>📄 ເຮັດສັນຍາ</a>
+              </>)}
+              {sel.status === "reserved" && (
+                <a className="btn-p flex-1 text-center" href={`/contracts?lot=${sel.id}`}>📄 ເຮັດສັນຍາ</a>
+              )}
+              {sel.status === "sold" && d.contract_id && (
+                <a className="btn-o flex-1 text-center" href={`/print/contract/${d.contract_id}`} target="_blank">🖨 ສັນຍາ</a>
+              )}
+              <button className="btn-o flex-1" onClick={() => { setForm(sel); setSel(null); }}>✏️ ແກ້ໄຂຕອນ</button>
+            </div>
           </div>
         )}
       </Modal>
