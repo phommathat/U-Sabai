@@ -9,7 +9,7 @@ const ST_COLOR = { booking: "amber", paying: "blue", overdue: "red", completed: 
 const num = (v) => (v === "" || v == null ? null : v);
 
 function Contracts() {
-  const { projectId, profile } = useApp();
+  const { projectId, projectIds, profile } = useApp();
   const [rows, setRows] = useState([]);
   const [bal, setBal] = useState({});
   const [lots, setLots] = useState([]);
@@ -17,19 +17,20 @@ function Contracts() {
   const [form, setForm] = useState(null);
 
   const load = () => {
-    if (!projectId) return;
+    if (!projectIds.length) return;
     supabase.from("contracts")
       .select("*, lots(code), customers(code,full_name)")
-      .eq("project_id", projectId).order("created_at", { ascending: false }).limit(300)
+      .in("project_id", projectIds).order("created_at", { ascending: false }).limit(300)
       .then(({ data }) => setRows(data || []));
-    supabase.from("v_contract_balance").select("*").eq("project_id", projectId)
+    supabase.from("v_contract_balance").select("*").in("project_id", projectIds)
       .then(({ data }) => setBal(Object.fromEntries((data || []).map((b) => [b.id, b]))));
-    supabase.from("lots").select("id,code,list_price,currency").eq("project_id", projectId)
-      .in("status", ["available", "reserved"]).order("code").then(({ data }) => setLots(data || []));
+    if (projectId)
+      supabase.from("lots").select("id,code,list_price,currency").eq("project_id", projectId)
+        .in("status", ["available", "reserved"]).order("code").then(({ data }) => setLots(data || []));
     supabase.from("customers").select("id,code,full_name,tel,village,occupation").order("code").limit(500)
       .then(({ data }) => setCusts(data || []));
   };
-  useEffect(() => { load(); }, [projectId]);
+  useEffect(() => { load(); }, [projectIds]);
 
   // ມາຈາກຜັງຕອນດິນ (?lot=...) → ເປີດຟອມພ້ອມຕອນ + ລາຄາທີ່ດຶງມາແລ້ວ
   useEffect(() => {
@@ -116,7 +117,9 @@ function Contracts() {
     <>
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold text-navy">ສັນຍາຂາຍ ({rows.length})</h2>
-        <button className="btn-p" onClick={() => setForm({ pay_type: "installment", currency: "LAK", sign_date: new Date().toISOString().slice(0, 10), installment_period_months: 1, status: "paying", balance_due_when: "after_deed_transfer", mode: "new" })}>
+        <button className="btn-p" onClick={() => projectId
+          ? setForm({ pay_type: "installment", currency: "LAK", sign_date: new Date().toISOString().slice(0, 10), installment_period_months: 1, status: "paying", balance_due_when: "after_deed_transfer", mode: "new" })
+          : alert("ກະລຸນາເລືອກໂຄງການດຽວກ່ອນ ຈຶ່ງສ້າງສັນຍາໄດ້")}>
           + ສ້າງສັນຍາໃໝ່
         </button>
       </div>
