@@ -17,16 +17,16 @@ const SNAME = Object.fromEntries(STAGES.map(([k, l]) => [k, l]));
 const SCOLOR = Object.fromEntries(STAGES.map(([k, , c]) => [k, c]));
 
 function Deeds() {
-  const { projectId } = useApp();
+  const { projectIds } = useApp();
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState(null);
 
   const load = () =>
-    projectId &&
-    supabase.from("v_deed_pipeline").select("*").eq("project_id", projectId)
+    projectIds.length &&
+    supabase.from("v_deed_pipeline").select("*").in("project_id", projectIds)
       .order("pct_paid", { ascending: false })
       .then(({ data }) => setRows(data || []));
-  useEffect(() => { load(); }, [projectId]);
+  useEffect(() => { load(); }, [projectIds]);
 
   const openDeed = async (r) => {
     const { data, error } = await supabase.from("title_deeds")
