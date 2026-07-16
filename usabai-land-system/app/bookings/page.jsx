@@ -8,24 +8,25 @@ import { fmt, fdate, BOOKING_STATUS } from "@/lib/fmt";
 const ST_COLOR = { active: "amber", converted: "green", expired: "red", cancelled: "gray", refunded: "gray" };
 
 function Bookings() {
-  const { projectId, profile } = useApp();
+  const { projectId, projectIds, profile } = useApp();
   const [rows, setRows] = useState([]);
   const [lots, setLots] = useState([]);
   const [custs, setCusts] = useState([]);
   const [form, setForm] = useState(null);
 
   const load = () => {
-    if (!projectId) return;
+    if (!projectIds.length) return;
     supabase.from("bookings")
       .select("*, lots(code), customers(code,full_name)")
-      .eq("project_id", projectId).order("booking_date", { ascending: false })
+      .in("project_id", projectIds).order("booking_date", { ascending: false })
       .then(({ data }) => setRows(data || []));
-    supabase.from("lots").select("id,code").eq("project_id", projectId).eq("status", "available").order("code")
-      .then(({ data }) => setLots(data || []));
+    if (projectId)
+      supabase.from("lots").select("id,code").eq("project_id", projectId).eq("status", "available").order("code")
+        .then(({ data }) => setLots(data || []));
     supabase.from("customers").select("id,code,full_name").order("code").limit(500)
       .then(({ data }) => setCusts(data || []));
   };
-  useEffect(() => { load(); }, [projectId]);
+  useEffect(() => { load(); }, [projectIds]);
 
   // ມາຈາກຜັງຕອນດິນ (?lot=...) → ເປີດຟອມພ້ອມຕອນທີ່ເລືອກ
   useEffect(() => {
@@ -81,7 +82,9 @@ function Bookings() {
     <>
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold text-navy">ການຈອງ / ໃບຈອງດິນ</h2>
-        <button className="btn-p" onClick={() => setForm({ booking_date: today, status: "active", mode: "new", currency: "LAK" })}>+ ອອກໃບຈອງດິນ</button>
+        <button className="btn-p" onClick={() => projectId
+          ? setForm({ booking_date: today, status: "active", mode: "new", currency: "LAK" })
+          : alert("ກະລຸນາເລືອກໂຄງການດຽວກ່ອນ ຈຶ່ງອອກໃບຈອງໄດ້")}>+ ອອກໃບຈອງດິນ</button>
       </div>
       <Table cols={["ເລກໃບຈອງ", "ລູກຄ້າ", "ຕອນ", "ວັນທີຈອງ", "ເງິນມັດຈຳ", "ກຳນົດເຮັດສັນຍາ", "ສະຖານະ", ""]}
         rows={rows.map((b) => {
