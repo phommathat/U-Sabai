@@ -14,20 +14,20 @@ const CNAME = Object.fromEntries(CATS.map(([k, l]) => [k, l]));
 const CCOLOR = Object.fromEntries(CATS.map(([k, , c]) => [k, c]));
 
 function Costs() {
-  const { projectId } = useApp();
+  const { projectId, projectIds } = useApp();
   const [rows, setRows] = useState([]);
   const [lots, setLots] = useState([]);
   const [fx, setFx] = useState({ LAK: 1 });
   const [form, setForm] = useState(null);
 
   const load = () => {
-    if (!projectId) return;
-    supabase.from("costs").select("*").eq("project_id", projectId)
+    if (!projectIds.length) return;
+    supabase.from("costs").select("*").in("project_id", projectIds)
       .order("cost_date", { ascending: false }).then(({ data }) => setRows(data || []));
-    supabase.from("lots").select("list_price,currency").eq("project_id", projectId)
+    supabase.from("lots").select("list_price,currency").in("project_id", projectIds)
       .then(({ data }) => setLots(data || []));
   };
-  useEffect(() => { load(); }, [projectId]);
+  useEffect(() => { load(); }, [projectIds]);
   useEffect(() => {
     supabase.from("fx_rates").select("currency,rate_to_lak").then(({ data }) => {
       const m = { LAK: 1 };
@@ -39,6 +39,7 @@ function Costs() {
 
   const save = async (e) => {
     e.preventDefault();
+    if (!projectId) return alert("ກະລຸນາເລືອກໂຄງການດຽວກ່ອນ ຈຶ່ງບັນທຶກຕົ້ນທຶນໄດ້");
     const { error } = await supabase.from("costs").insert({ ...form, project_id: projectId });
     if (error) return alert("ຜິດພາດ: " + error.message);
     setForm(null); load();
