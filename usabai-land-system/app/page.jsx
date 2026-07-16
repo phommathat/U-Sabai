@@ -8,30 +8,45 @@ import { fmtM, fdate, fmt, fmtMoney, toLAK } from "@/lib/fmt";
 const CUR_ORDER = ["LAK", "THB", "USD"];
 
 function Dashboard() {
-  const { projectId } = useApp();
+  const { projectIds, projects } = useApp();
   const [counts, setCounts] = useState([]);   // v_project_summary (ນັບຕອນ)
   const [money, setMoney] = useState([]);      // v_project_money_cur (ເງິນ ແຍກສະກຸນ)
   const [costs, setCosts] = useState([]);      // v_project_cost_cur
+  const [monthly, setMonthly] = useState([]);  // ຄາດຄະເນລາຍຮັບປະຈຳເດືອນ (ທຸກໂຄງການ)
   const [fx, setFx] = useState({ LAK: 1, THB: 620, USD: 21500 });
   const [overdueInst, setOverdueInst] = useState([]);
   const [overdueBk, setOverdueBk] = useState([]);
-  const [combine, setCombine] = useState(false); // ປຸ່ມລວມເປັນກີບ
+  // ໂໝດສະກຸນເງິນ: "split" = ແຍກສະກຸນ · "LAK"/"THB"/"USD" = ລວມເປັນສະກຸນນັ້ນ (ຄ່າເລີ່ມຕົ້ນ: ບາດ)
+  const [curMode, setCurMode] = useState("THB");
 
   useEffect(() => {
     supabase.from("v_project_summary").select("*").then(({ data }) => setCounts(data || []));
     supabase.from("v_project_money_cur").select("*").then(({ data }) => setMoney(data || []));
     supabase.from("v_project_cost_cur").select("*").then(({ data }) => setCosts(data || []));
+    supabase.from("v_monthly_due_cut6").select("*").then(({ data }) => setMonthly(data || []));
     supabase.from("fx_rates").select("*").then(({ data }) =>
       setFx(Object.fromEntries((data || []).map((r) => [r.currency, Number(r.rate_to_lak)]))));
     supabase.from("v_overdue_installments").select("*").limit(15).then(({ data }) => setOverdueInst(data || []));
     supabase.from("v_overdue_bookings").select("*").limit(15).then(({ data }) => setOverdueBk(data || []));
   }, []);
 
-  // ---- filter ຕາມໂຄງການທີ່ເລືອກ (ຫວ່າງ = ທຸກໂຄງການ) ----
-  const inScope = (r) => !projectId || r.project_id === projectId;
-  const cFilt = counts.filter(inScope);
-  const mFilt = money.filter(inScope);
-  const kFilt = costs.filter(inScope);
+  // ---- filter ຕາມໂຄງການທີ່ຕິກເລືອກ ----
+  const sel = new Set(projectIds);
+  const cFilt = counts.filter((r) => sel.has(r.id));
+  const mFilt = money.filter((r) => sel.has(r.project_id));
+  const kFilt = costs.filter((r) => sel.has(r.project_id));
+
+  // ---- ຄາດຄະເນລາຍຮັບປະຈຳເດືອນ: ຮອບ 6 ເດືອນນີ້ → 6 ເດືອນໜ້າ (ລວມທຸກໂຄງການ) ----
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const curRows = monthly.filter((m) => m.period_from <= todayStr && todayStr <= m.period_to);
+  const expByCur = {};
+  curRows.forEach((m) => {
+    expByCur[m.currency] = expByCur[m.currency] || { amt: 0, n: 0 };
+    expByCur[m.currency].amt += Number(m.amount_expected || 0);
+    expByCur[m.currency].n += Number(m.n_installments || 0);
+  });
+  const expCurs = CUR_ORDER.filter((c) => expByCur[c]);
+  const period = curRows[0];
 
   // ---- ນັບຕອນ (ບໍ່ຂຶ້ນກັບສະກຸນ) ----
   const nLots = cFilt.reduce((s, p) => s + Number(p.total_lots || 0), 0);
@@ -47,9 +62,11 @@ function Dashboard() {
   kFilt.forEach((r) => bump(r.currency, "cost", r.total_cost));
   const curs = CUR_ORDER.filter((c) => byCur[c]);
 
-  // ---- ລວມເປັນກີບ (ທາງເລືອກ) ----
-  const lak = { sales: 0, received: 0, balance: 0, cost: 0 };
-  curs.forEach((c) => ["sales", "received", "balance", "cost"].forEach((k) => { lak[k] += toLAK(byCur[c][k], c, fx); }));
+  // ---- ແປງທຸກສະກຸນ → ສະກຸນເປົ້າໝາຍ (ຜ່ານກີບ ຕາມ fx_rates) ----
+  const split = curMode === "split";
+  const conv = (amt, from) => Math.round(toLAK(amt, from, fx) / (fx[split ? "LAK" : curMode] || 1));
+  const tot = { sales: 0, received: 0, balance: 0, cost: 0 };
+  curs.forEach((c) => ["sales", "received", "balance", "cost"].forEach((k) => { tot[k] += conv(byCur[c][k], c); }));
 
   // ---- money ຕໍ່ໂຄງການ (ສຳລັບ card) ----
   const moneyByProj = {};
@@ -61,8 +78,8 @@ function Dashboard() {
   const MoneyStat = ({ label, k }) => (
     <div className="card">
       <div className="text-xs text-slate-500 mb-1">{label}</div>
-      {combine ? (
-        <div className="text-lg font-bold text-navy">{fmtM(lak[k])} ₭</div>
+      {!split ? (
+        <div className="text-lg font-bold text-navy">{fmtMoney(tot[k], curMode)}</div>
       ) : curs.length ? (
         curs.map((c) => (
           <div key={c} className="text-base font-bold text-navy leading-tight">{fmtMoney(byCur[c][k], c)}</div>
@@ -74,11 +91,15 @@ function Dashboard() {
   return (
     <>
       <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-        <h2 className="text-lg font-bold text-navy">{projectId ? "ພາບລວມໂຄງການ" : "ພາບລວມທຸກໂຄງການ"}</h2>
-        <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
-          <input type="checkbox" checked={combine} onChange={(e) => setCombine(e.target.checked)} />
-          ລວມເປັນກີບ {combine && <span className="text-slate-400">(THB={fx.THB?.toLocaleString()} · USD={fx.USD?.toLocaleString()})</span>}
-        </label>
+        <h2 className="text-lg font-bold text-navy">{projectIds.length === projects.length ? "ພາບລວມທຸກໂຄງການ" : `ພາບລວມ ${projectIds.length} ໂຄງການ`}</h2>
+        <div className="flex items-center gap-1 text-xs">
+          <span className="text-slate-500 mr-1">ສະກຸນເງິນ:</span>
+          {[["THB", "฿ ບາດ"], ["LAK", "₭ ກີບ"], ["USD", "$ ໂດລາ"], ["split", "ແຍກສະກຸນ"]].map(([k, l]) => (
+            <button key={k} onClick={() => setCurMode(k)}
+              className={`px-3 py-1.5 rounded-full border ${curMode === k ? "bg-navy text-white border-navy" : "bg-white border-slate-300"}`}>{l}</button>
+          ))}
+          {!split && <span className="text-slate-400 ml-1">(THB={fx.THB?.toLocaleString()} ₭ · USD={fx.USD?.toLocaleString()} ₭)</span>}
+        </div>
       </div>
 
       {/* ນັບຕອນ */}
@@ -96,15 +117,46 @@ function Dashboard() {
         <MoneyStat label="ຍັງຄ້າງຮັບ" k="balance" />
         <MoneyStat label="ຕົ້ນທຶນສະສົມ" k="cost" />
       </div>
-      {!combine && curs.length > 1 && (
+      {split && curs.length > 1 && (
         <p className="text-xs text-slate-400 -mt-4 mb-6">
-          * ສະແດງແຍກຕາມສະກຸນ (ບໍ່ບວກປົນ). ຕິກ "ລວມເປັນກີບ" ເພື່ອເບິ່ງເລກລວມໂດຍປະມານ ຕາມອັດຕາປັດຈຸບັນ.
+          * ສະແດງແຍກຕາມສະກຸນ (ບໍ່ບວກປົນ). ເລືອກ ฿/₭/$ ເພື່ອເບິ່ງເລກລວມໂດຍປະມານ ຕາມອັດຕາປັດຈຸບັນ.
+        </p>
+      )}
+      {!split && (
+        <p className="text-xs text-slate-400 -mt-4 mb-6">
+          * ເລກລວມແປງເປັນ {curMode} ໂດຍປະມານ ຕາມອັດຕາໃນໜ້າຕັ້ງຄ່າ — ບໍ່ແມ່ນຕົວເລກບັນຊີແທ້.
         </p>
       )}
 
-      {/* card ຕໍ່ໂຄງການ */}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 mb-6">
-        {cFilt.map((p) => {
+      {/* ຄາດຄະເນລາຍຮັບປະຈຳເດືອນ — ລວມທຸກໂຄງການ, ຮອບ 6 ເດືອນນີ້ → 6 ເດືອນໜ້າ */}
+      <div className="card mb-6 border-2 border-brand-amber/40 bg-amber-50/40">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <div>
+            <div className="font-bold text-navy">📅 ຄາດຄະເນລາຍຮັບປະຈຳເດືອນ <span className="font-normal text-xs text-slate-500">(ລວມທຸກໂຄງການ)</span></div>
+            {period && <div className="text-xs text-slate-500 mt-0.5">ຮອບ {fdate(period.period_from)} → {fdate(period.period_to)}</div>}
+          </div>
+          {!expCurs.length ? <div className="text-slate-400 text-sm">ບໍ່ມີງວດຄາດຮັບໃນຮອບນີ້</div>
+          : split ? expCurs.map((c) => (
+            <div key={c} className="text-right">
+              <div className="text-lg font-bold text-navy leading-tight">{fmtMoney(expByCur[c].amt, c)}</div>
+              <div className="text-[10px] text-slate-400">{expByCur[c].n} ງວດ · {c}</div>
+            </div>
+          )) : (
+            <div className="text-right">
+              <div className="text-xl font-bold text-brand-green leading-tight">
+                ≈ {fmtMoney(expCurs.reduce((s, c) => s + conv(expByCur[c].amt, c), 0), curMode)}
+              </div>
+              <div className="text-[10px] text-slate-400">{expCurs.reduce((s, c) => s + expByCur[c].n, 0)} ງວດ · ລວມເປັນ {curMode} ໂດຍປະມານ</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* card ຕໍ່ໂຄງການ — ໂຄງການປິດການຂາຍ/ປິດໂຄງການ ພັບເກັບໄວ້ລຸ່ມ */}
+      {(() => {
+        const statusOf = (id) => projects.find((x) => x.id === id)?.status;
+        const isClosed = (p) => ["sold_out", "closed"].includes(statusOf(p.id));
+        const ProjCard = (p) => {
           const m = moneyByProj[p.id];
           const mc = m ? CUR_ORDER.filter((c) => m.cur[c]) : [];
           return (
@@ -127,8 +179,21 @@ function Dashboard() {
               )) : <div className="text-xs text-slate-400">ຍັງບໍ່ມີສັນຍາ</div>}
             </div>
           );
-        })}
-      </div>
+        };
+        const act = cFilt.filter((p) => !isClosed(p));
+        const cls = cFilt.filter(isClosed);
+        return (<>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 mb-6">{act.map(ProjCard)}</div>
+          {cls.length > 0 && (
+            <details className="mb-6">
+              <summary className="cursor-pointer text-sm text-slate-500 font-semibold mb-3">
+                📦 ໂຄງການປິດການຂາຍ/ປິດແລ້ວ ({cls.length}) — ກົດເພື່ອເປີດເບິ່ງ
+              </summary>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 opacity-75">{cls.map(ProjCard)}</div>
+            </details>
+          )}
+        </>);
+      })()}
 
       <div className="grid gap-4 xl:grid-cols-2">
         <div>
