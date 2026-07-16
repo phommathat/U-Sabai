@@ -26,6 +26,11 @@ export const CONTRACT_STATUS = {
   booking: "ຈອງ", paying: "ກຳລັງຜ່ອນ", overdue: "ຄ້າງຊຳລະ",
   completed: "ສຳເລັດ", cancelled: "ຍົກເລີກ",
 };
+export const DEED_STAGE = {
+  not_eligible: "ຍັງບໍ່ຮອດເກນ 20%", doc_prep: "ກຽມເອກະສານ/ຍື່ນຟອມ",
+  submitted: "ຍື່ນຫ້ອງການທີ່ດິນ", processing: "ກຳລັງດຳເນີນການ",
+  issued: "ອອກໃບຕາດິນແລ້ວ", handed_over: "ສົ່ງມອບແລ້ວ",
+};
 export const BOOKING_STATUS = {
   active: "ຈອງຢູ່", converted: "ເຮັດສັນຍາແລ້ວ", expired: "ກາຍກຳນົດ",
   cancelled: "ຍົກເລີກ", refunded: "ຄືນເງິນແລ້ວ",
