@@ -9,7 +9,7 @@ export const useApp = () => useContext(Ctx);
 
 const NAV = [
   ["/", "📊", "ພາບລວມ"],
-  ["/lots", "🗺️", "ຕອນດິນ"],
+  ["/lots", "🗺️", "ຜັງຕອນດິນ"],
   ["/customers", "👥", "ລູກຄ້າ"],
   ["/bookings", "📌", "ການຈອງ"],
   ["/contracts", "📄", "ສັນຍາຂາຍ"],
@@ -22,6 +22,7 @@ const NAV = [
 
 export default function Shell({ children }) {
   const [session, setSession] = useState(undefined);
+  const [profile, setProfile] = useState(null);
   const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState("");
   const path = usePathname();
@@ -35,6 +36,9 @@ export default function Shell({ children }) {
 
   useEffect(() => {
     if (!session) return;
+    // ຂໍ້ມູນພະນັກງານທີ່ login — ໃຊ້ດຶງຊື່ພະນັກງານຂາຍໃສ່ໃບຈອງ/ສັນຍາ auto
+    supabase.from("profiles").select("full_name,role,tel,position").eq("id", session.user.id).single()
+      .then(({ data }) => setProfile(data || null));
     supabase.from("projects").select("id,code,name").order("code").then(({ data }) => {
       setProjects(data || []);
       const saved = localStorage.getItem("projectId");
@@ -54,7 +58,7 @@ export default function Shell({ children }) {
   const project = projects.find((p) => p.id === projectId) || null;
 
   return (
-    <Ctx.Provider value={{ session, projects, projectId, project, pick }}>
+    <Ctx.Provider value={{ session, profile, projects, projectId, project, pick }}>
       <div className="flex min-h-screen">
         <aside className="w-56 bg-navy text-white fixed inset-y-0 left-0 flex flex-col z-20">
           <div className="p-4 border-b border-white/10 flex items-center gap-3">
@@ -82,7 +86,7 @@ export default function Shell({ children }) {
         </aside>
         <main className="ml-56 flex-1 p-6">
           <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-            <div className="text-xs text-slate-500">{session.user.email}</div>
+            <div className="text-xs text-slate-500">👤 {profile?.full_name || session.user.email}{profile?.position ? ` · ${profile.position}` : ""}</div>
             <select className="inp !w-auto" value={projectId} onChange={(e) => pick(e.target.value)}>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>🏘️ {p.code} — {p.name}</option>
