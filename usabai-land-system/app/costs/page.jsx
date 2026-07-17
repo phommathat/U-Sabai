@@ -14,7 +14,7 @@ const CNAME = Object.fromEntries(CATS.map(([k, l]) => [k, l]));
 const CCOLOR = Object.fromEntries(CATS.map(([k, , c]) => [k, c]));
 
 function Costs() {
-  const { projectId, projectIds } = useApp();
+  const { projectId, projectIds, projects } = useApp();
   const [rows, setRows] = useState([]);
   const [lots, setLots] = useState([]);
   const [fx, setFx] = useState({ LAK: 1 });
@@ -24,7 +24,7 @@ function Costs() {
     if (!projectIds.length) return;
     supabase.from("costs").select("*").in("project_id", projectIds)
       .order("cost_date", { ascending: false }).then(({ data }) => setRows(data || []));
-    supabase.from("lots").select("list_price,currency").in("project_id", projectIds)
+    supabase.from("lots").select("list_price,currency,project_id").in("project_id", projectIds)
       .then(({ data }) => setLots(data || []));
   };
   useEffect(() => { load(); }, [projectIds]);
@@ -62,16 +62,38 @@ function Costs() {
   return (
     <>
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-bold text-navy">ຕົ້ນທຶນ & ກຳໄລ</h2>
+        <h2 className="text-lg font-bold text-navy">ສະຫຼຸບການລົງທຶນ</h2>
         <button className="btn-p" onClick={() => setForm({ cost_date: new Date().toISOString().slice(0, 10), category: "development", currency: "LAK" })}>+ ບັນທຶກລາຍຈ່າຍ</button>
       </div>
+      {/* ໝວດທຳອິດ = ລາຄາຊື້ດິນ */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-5 mb-5">
-        <KPI label="ຕົ້ນທຶນລວມ (ປ່ຽນເປັນກີບ)" value={fmtM(total)} note="ທຸກສະກຸນ → ກີບ" />
-        <KPI label="ຊື້ດິນ" value={fmtM(sumCat("land_purchase"))} />
+        <KPI label="ລາຄາຊື້ດິນ" value={fmtM(sumCat("land_purchase"))} note="ໝວດ ຊື້ດິນ" />
         <KPI label="ພັດທະນາ" value={fmtM(sumCat("development"))} />
         <KPI label="ການຕະຫຼາດ" value={fmtM(sumCat("marketing"))} />
         <KPI label="ຄ່າແລ່ນໃບຕາດິນ" value={fmtM(sumCat("title_deed"))} />
+        <KPI label="ຕົ້ນທຶນລວມ (ປ່ຽນເປັນກີບ)" value={fmtM(total)} note="ທຸກສະກຸນ → ກີບ" />
       </div>
+
+      {/* ສະຫຼຸບແຍກຕາມໂຄງການ (ເມື່ອເລືອກຫຼາຍໂຄງການ) */}
+      {projectIds.length > 1 && (
+        <div className="card mb-5">
+          <b className="text-navy text-sm">ສະຫຼຸບແຍກຕາມໂຄງການ (ປ່ຽນເປັນກີບ)</b>
+          <Table cols={["ໂຄງການ", "ລາຄາຊື້ດິນ", "ຕົ້ນທຶນລວມ", "ມູນຄ່າຂາຍ", "ກຳໄລຄາດຄະເນ"]}
+            rows={projectIds.map((pid) => {
+              const pr = projects.find((p) => p.id === pid);
+              const pc = rows.filter((r) => r.project_id === pid);
+              const land = pc.filter((r) => r.category === "land_purchase").reduce((s, r) => s + toLAK(r.amount, r.currency), 0);
+              const cost = pc.reduce((s, r) => s + toLAK(r.amount, r.currency), 0);
+              const sale = lots.filter((l) => l.project_id === pid).reduce((s, l) => s + toLAK(l.list_price, l.currency), 0);
+              const profit = sale - cost;
+              return [
+                <b key="p">{pr?.code} — {pr?.name}</b>,
+                fmtM(land), fmtM(cost), fmtM(sale),
+                <b key="f" className={profit < 0 ? "text-brand-red" : "text-brand-green"}>{fmtM(profit)}</b>,
+              ];
+            })} />
+        </div>
+      )}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-3 mb-5">
         <KPI label="ມູນຄ່າຂາຍທັງໂຄງການ (ປ່ຽນເປັນກີບ)" value={fmtM(saleLAK)} note="ຈາກລາຄາຕັ້ງທຸກຕອນ" />
         <KPI label="ຕົ້ນທຶນລວມ (ປ່ຽນເປັນກີບ)" value={fmtM(total)} />

@@ -54,7 +54,7 @@ function Deeds() {
     <>
       <h2 className="text-lg font-bold text-navy mb-3">ຕິດຕາມໃບຕາດິນ</h2>
       <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 mb-4">
-        📜 ເກນເລີ່ມແລ່ນໃບຕາດິນ: ຊຳລະຄົບ 20% ຂຶ້ນໄປ — ສັນຍາທີ່ຮອດເກນຈະມີປຸ່ມ "ເປີດບັນຊີແລ່ນໃບຕາດິນ"
+        📜 ເກນເລີ່ມແລ່ນໃບຕາດິນ: ຊຳລະຄົບ 20% ຂຶ້ນໄປ (ນັບ ເງິນມັດຈຳຈອງ + ເງິນມື້ເຮັດສັນຍາ ນຳ) — ສັນຍາທີ່ຮອດເກນຈະມີປຸ່ມ "ເລີ່ມຕົ້ນແລ່ນໃບຕາດິນ"
       </div>
       <div className="grid gap-3 grid-cols-3 lg:grid-cols-6 mb-5">
         {STAGES.map(([k, l]) => (
@@ -72,7 +72,7 @@ function Deeds() {
           r.new_deed_no || "—",
           r.handover_date ? `${fdate(r.handover_date)} (${r.received_by || "?"})` : "—",
           !r.deed_id && r.deed_eligible ? (
-            <button key="a" className="btn-p !py-1 !px-3 text-xs" onClick={() => openDeed(r)}>ເປີດບັນຊີແລ່ນໃບຕາດິນ</button>
+            <button key="a" className="btn-p !py-1 !px-3 text-xs" onClick={() => openDeed(r)}>ເລີ່ມຕົ້ນແລ່ນໃບຕາດິນ</button>
           ) : r.deed_id ? (
             <span key="a" className="flex gap-1">
               <button className="btn-o !py-1 !px-3 text-xs"
