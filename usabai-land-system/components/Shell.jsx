@@ -8,21 +8,22 @@ const Ctx = createContext(null);
 export const useApp = () => useContext(Ctx);
 
 const NAV = [
-  ["/", "📊", "ພາບລວມ"],
-  ["/lots", "🗺️", "ຜັງຕອນດິນ"],
-  ["/customers", "👥", "ລູກຄ້າ"],
-  ["/bookings", "📌", "ການຈອງ"],
-  ["/contracts", "📄", "ສັນຍາຂາຍ"],
-  ["/payments", "💰", "ການຊຳລະເງິນ"],
-  ["/deeds", "📜", "ໃບຕາດິນ"],
-  ["/costs", "🧾", "ຕົ້ນທຶນ & ກຳໄລ"],
-  ["/documents", "📁", "ເອກະສານລູກຄ້າ"],
-  ["/settings", "⚙️", "ຕັ້ງຄ່າ / ອັດຕາແລກປ່ຽນ"],
+  ["/", "📊", "ພາບລວມ", "overview"],
+  ["/lots", "🗺️", "ຜັງຕອນດິນ", "lots"],
+  ["/customers", "👥", "ລູກຄ້າ", "customers"],
+  ["/bookings", "📌", "ການຈອງ", "bookings"],
+  ["/contracts", "📄", "ສັນຍາຂາຍ", "contracts"],
+  ["/payments", "💰", "ການຊຳລະເງິນ", "payments"],
+  ["/deeds", "📜", "ໃບຕາດິນ", "deeds"],
+  ["/costs", "🧾", "ສະຫຼຸບການລົງທຶນ", "costs"],
+  ["/documents", "📁", "ເອກະສານລູກຄ້າ", "documents"],
+  ["/settings", "⚙️", "ຕັ້ງຄ່າ", "settings"],
 ];
 
 export default function Shell({ children }) {
   const [session, setSession] = useState(undefined);
   const [profile, setProfile] = useState(null);
+  const [menuAccess, setMenuAccess] = useState(null); // null = ບໍ່ຈຳກັດ (ເຫັນທຸກ menu)
   const [projects, setProjects] = useState([]);
   const [projectIds, setProjectIds] = useState([]); // ໂຄງການທີ່ຕິກເລືອກ (ຫຼາຍອັນໄດ້)
   const [ddOpen, setDdOpen] = useState(false);
@@ -39,8 +40,15 @@ export default function Shell({ children }) {
   useEffect(() => {
     if (!session) return;
     // ຂໍ້ມູນພະນັກງານທີ່ login — ໃຊ້ດຶງຊື່ພະນັກງານຂາຍໃສ່ໃບຈອງ/ສັນຍາ auto
-    supabase.from("profiles").select("full_name,role,tel,position").eq("id", session.user.id).single()
-      .then(({ data }) => setProfile(data || null));
+    // ບັນຊີໃໝ່ (admin ສ້າງໃນ Supabase Dashboard): login ຄັ້ງທຳອິດ ສ້າງ profile ອັດຕະໂນມັດ
+    supabase.from("profiles").select("full_name,role,tel,position").eq("id", session.user.id).maybeSingle()
+      .then(async ({ data }) => {
+        if (data) return setProfile(data);
+        const { data: np } = await supabase.from("profiles")
+          .insert({ id: session.user.id, full_name: session.user.email.split("@")[0], role: "sales" })
+          .select().single();
+        setProfile(np || { full_name: session.user.email, role: "sales" });
+      });
     supabase.from("projects").select("id,code,name,status").order("code").then(({ data }) => {
       setProjects(data || []);
       let saved = [];
@@ -49,6 +57,14 @@ export default function Shell({ children }) {
       setProjectIds(valid.length ? valid : (data || []).map((p) => p.id)); // default = ທຸກໂຄງການ
     });
   }, [session]);
+
+  // ສິດຕໍ່ menu: admin/ceo ຫຼື ຍັງບໍ່ຕັ້ງສິດ = ເຫັນທຸກ menu
+  useEffect(() => {
+    if (!session || !profile) return;
+    if (["admin", "ceo"].includes(profile.role)) { setMenuAccess(null); return; }
+    supabase.from("user_menu_access").select("menu_key,can_view").eq("user_id", session.user.id)
+      .then(({ data }) => setMenuAccess(data?.length ? data : null));
+  }, [session, profile]);
 
   // ປິດ dropdown ເມື່ອ click ນອກ
   useEffect(() => {
@@ -88,7 +104,7 @@ export default function Shell({ children }) {
             </div>
           </div>
           <nav className="flex-1 py-3">
-            {NAV.map(([href, ico, label2]) => (
+            {NAV.filter(([, , , key]) => !menuAccess || menuAccess.some((m) => m.menu_key === key && m.can_view)).map(([href, ico, label2]) => (
               <Link key={href} href={href}
                 className={`flex items-center gap-2.5 px-4 py-2.5 text-sm border-l-2 ${
                   path === href
