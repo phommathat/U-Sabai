@@ -173,7 +173,7 @@ function Customers() {
                   const li = p.installment_id ? instMap[p.installment_id] : null;
                   return [
                     fdate(p.pay_date),
-                    isDown(p) ? "ດາວ/ຈອງ" : li ? `ງວດ ${li.seq}` : (p.note?.match(/ງວດ\s*\d+[^·]*/)?.[0]?.trim() || "—"),
+                    isDown(p) ? "ດາວ (ງວດ 0)" : li ? `ງວດ ${li.seq}` : (p.note?.match(/ງວດ\s*\d+[^·]*/)?.[0]?.trim() || "—"),
                     li?.due_date ? fdate(li.due_date) : "—",
                     <b key="a">{fmt(p.amount_received, p.currency)}</b>,
                     remainAfter[p.id] > 0 ? fmt(remainAfter[p.id], drill.currency) : "ຄົບແລ້ວ ✓",
@@ -191,7 +191,7 @@ function Customers() {
               <Table cols={["ງວດ", "ຄົບກຳນົດ", "ຕາມກຳນົດ", "ຮັບແລ້ວ", "ຄ້າງ", "ສະຖານະ"]}
                 empty="✓ ຊຳລະຄົບທຸກງວດແລ້ວ"
                 rows={left.map((i) => [
-                  i.seq === 0 ? "ດາວ/ຈອງ" : `ງວດ ${i.seq}`,
+                  i.seq === 0 ? "ດາວ (ງວດ 0)" : `ງວດ ${i.seq}`,
                   i.due_date ? fdate(i.due_date) : (i.due_condition === "after_deed_transfer" ? "ຫຼັງໂອນໃບຕາດິນ" : "—"),
                   fmt(i.amount_due, drill.currency), fmt(fifo[i.id] || null, drill.currency),
                   Number(i.amount_due) > (fifo[i.id] || 0) ? <b key="o" className="text-brand-red">{fmt(Number(i.amount_due) - (fifo[i.id] || 0), drill.currency)}</b> : "—",
