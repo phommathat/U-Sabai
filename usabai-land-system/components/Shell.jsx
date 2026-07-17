@@ -96,11 +96,11 @@ export default function Shell({ children }) {
     <Ctx.Provider value={{ session, profile, projects, projectIds, projectId, project, pick }}>
       <div className="flex min-h-screen">
         <aside className="w-56 bg-navy text-white fixed inset-y-0 left-0 flex flex-col z-20">
-          <div className="p-4 border-b border-white/10 flex items-center gap-3">
-            <img src="/logo-mark.png" alt="U-Sabai" className="w-11 h-11 rounded-full bg-white p-0.5 shrink-0" />
+          <div className="p-5 border-b border-white/10 flex flex-col items-center text-center gap-2.5">
+            <img src="/logo-mark.png" alt="U-Sabai" className="w-20 h-20 rounded-full bg-white p-1 shrink-0" />
             <div>
-              <div className="text-lg font-bold tracking-wider leading-none">U-<span className="text-brand-amber">SABAI</span></div>
-              <div className="text-[9px] tracking-[2px] text-blue-200 mt-1">LAND AND HOUSE</div>
+              <div className="text-2xl font-extrabold tracking-wider leading-none">U-<span className="text-brand-amber">SABAI</span></div>
+              <div className="text-[11px] font-semibold tracking-[3px] text-blue-200 mt-1.5">LAND AND HOUSE</div>
             </div>
           </div>
           <nav className="flex-1 py-3">
@@ -121,7 +121,7 @@ export default function Shell({ children }) {
         </aside>
         <main className="ml-56 flex-1 p-6">
           <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-            <div className="text-xs text-slate-500">👤 {profile?.full_name || session.user.email}{profile?.position ? ` · ${profile.position}` : ""}</div>
+            <div className="text-base font-bold text-slate-700">👤 {profile?.full_name || session.user.email}{profile?.position ? ` · ${profile.position}` : ""}</div>
             {/* ເລືອກໂຄງການ: ຕິກໄດ້ຫຼາຍອັນ */}
             <div className="relative" ref={ddRef}>
               <button className="inp !w-auto text-left min-w-[220px]" onClick={() => setDdOpen(!ddOpen)}>
