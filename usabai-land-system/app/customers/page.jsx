@@ -79,13 +79,32 @@ function Customers() {
       ? <span className="text-brand-green">ຈ່າຍຕາມກຳນົດ ✓</span>
       : <span className="text-brand-red">ກາຍກຳນົດ {days} ວັນ</span>;
   };
-  const stOf = (i) => {
-    const paid = paidOf(i);
-    return paid >= Number(i.amount_due) ? <Badge color="green">ຈ່າຍແລ້ວ</Badge>
-      : i.due_date && i.due_date < today ? <Badge color="red">ຄ້າງຊຳລະ</Badge>
-      : i.due_condition === "after_deed_transfer" ? <Badge color="navy">ຈ່າຍຫຼັງໂອນໃບຕາດິນ</Badge>
-      : <Badge color="gray">ຍັງບໍ່ຮອດກຳນົດ</Badge>;
+  // ---- ຈັດສັນຍອດແບບສະສົມ (FIFO): ຈ່າຍບໍ່ເຕັມ ≠ ຄ້າງ · ຈ່າຍລ່ວງໜ້າຄວບງວດທັດໄປ ----
+  const isDown = (p) => (p.note || "").includes("ຈ່າຍກ່ອນ");
+  const dDown = dPays.filter(isDown).reduce((s, p) => s + Number(p.amount_received || 0), 0);
+  const fifo = (() => {
+    let pool = dPays.filter((p) => !isDown(p)).reduce((s, p) => s + Number(p.amount_received || 0), 0);
+    let down = dDown;
+    const cov = {};
+    [...dInst].sort((a, b) => a.seq - b.seq).forEach((i) => {
+      const due = Number(i.amount_due || 0);
+      const c = i.seq === 0 ? Math.min(down, due) : Math.min(pool, due);
+      if (i.seq === 0) down -= c; else pool -= c;
+      cov[i.id] = c;
+    });
+    return cov;
+  })();
+  const stKey = (i) => {
+    const due = Number(i.amount_due || 0), c = fifo[i.id] || 0;
+    return due <= 0 || c >= due ? "paid"
+      : i.due_date && i.due_date < today ? (c > 0 ? "partial" : "overdue")
+      : i.due_condition === "after_deed_transfer" ? "deed" : "due";
   };
+  const stOf = (i) => ({
+    paid: <Badge color="green">ຈ່າຍແລ້ວ</Badge>, overdue: <Badge color="red">ຄ້າງຊຳລະ</Badge>,
+    partial: <Badge color="amber">ຈ່າຍບາງສ່ວນ</Badge>, deed: <Badge color="navy">ຈ່າຍຫຼັງໂອນໃບຕາດິນ</Badge>,
+    due: <Badge color="gray">ຍັງບໍ່ຮອດກຳນົດ</Badge>,
+  }[stKey(i)]);
   const dPaid = dPays.reduce((s, p) => s + Number(p.amount_received || 0), 0);
 
   const list = rows.filter((r) => !q || r.full_name?.includes(q) || r.tel?.includes(q) || r.code?.includes(q));
@@ -142,35 +161,43 @@ function Customers() {
             <div className="flex flex-wrap gap-x-6 gap-y-1">
               <div>ເລກສັນຍາ: <b>{drill.contract_no}</b> ({fdate(drill.sign_date)})</div>
               <div>ມູນຄ່າສັນຍາ: <b>{fmt(drill.sale_price, drill.currency)}</b></div>
+              <div>ເງິນດາວ: <b className="text-navy">{fmt(dDown || null, drill.currency)}</b></div>
               <div>ຊຳລະແລ້ວ: <b className="text-brand-green">{fmt(dPaid, drill.currency)}</b></div>
               <div>ຍອດຄ້າງ: <b className="text-brand-red">{fmt(Math.max(Number(drill.sale_price) - dPaid, 0), drill.currency)}</b></div>
             </div>
             <div>
               <div className="font-semibold text-navy mb-1">ການຮັບເງິນ ({dPays.length})</div>
-              <Table cols={["ວັນທີ", "ເລກໃບຮັບເງິນ", "ຈຳນວນ", "ຍອດຄ້າງຫຼັງຈ່າຍ", "ໝາຍເຫດ", ""]}
+              <Table cols={["ວັນທີຈ່າຍ", "ງວດ", "ວັນກຳນົດຈ່າຍ", "ຈຳນວນ", "ຍອດຄ້າງຫຼັງຈ່າຍ", "ໝາຍເຫດ", ""]}
                 empty="ຍັງບໍ່ມີການຮັບເງິນ"
-                rows={dPays.map((p) => [
-                  fdate(p.pay_date), p.receipt_no || "—",
-                  <b key="a">{fmt(p.amount_received, p.currency)}</b>,
-                  remainAfter[p.id] > 0 ? fmt(remainAfter[p.id], drill.currency) : "ຄົບແລ້ວ ✓",
-                  punctual(p),
-                  <span key="pr" className="flex gap-1">
-                    <a className="btn-o !py-0.5 !px-2 text-xs" title="ພິມ" href={`/print/receipt/${p.id}`} target="_blank">🖨</a>
-                    <a className="btn-o !py-0.5 !px-2 text-xs" title="ບັນທຶກ PDF" href={`/print/receipt/${p.id}?auto=1`} target="_blank">📄</a>
-                  </span>,
-                ])} />
+                rows={dPays.map((p) => {
+                  const li = p.installment_id ? instMap[p.installment_id] : null;
+                  return [
+                    fdate(p.pay_date),
+                    isDown(p) ? "ດາວ/ຈອງ" : li ? `ງວດ ${li.seq}` : (p.note?.match(/ງວດ\s*\d+[^·]*/)?.[0]?.trim() || "—"),
+                    li?.due_date ? fdate(li.due_date) : "—",
+                    <b key="a">{fmt(p.amount_received, p.currency)}</b>,
+                    remainAfter[p.id] > 0 ? fmt(remainAfter[p.id], drill.currency) : "ຄົບແລ້ວ ✓",
+                    punctual(p),
+                    <span key="pr" className="flex gap-1">
+                      <a className="btn-o !py-0.5 !px-2 text-xs" title="ພິມ" href={`/print/receipt/${p.id}`} target="_blank">🖨</a>
+                      <a className="btn-o !py-0.5 !px-2 text-xs" title="ບັນທຶກ PDF" href={`/print/receipt/${p.id}?auto=1`} target="_blank">📄</a>
+                    </span>,
+                  ];
+                })} />
             </div>
             <div>
-              <div className="font-semibold text-navy mb-1">ຕາຕະລາງງວດ — ແຜນກຳນົດຈ່າຍ ({dInst.length})</div>
+              {(() => { const left = dInst.filter((i) => stKey(i) !== "paid"); return (<>
+              <div className="font-semibold text-navy mb-1">ຕາຕະລາງງວດ — ຄ້າງ ແລະ ຕ້ອງຊຳລະຕໍ່ໄປ ({left.length})</div>
               <Table cols={["ງວດ", "ຄົບກຳນົດ", "ຕາມກຳນົດ", "ຮັບແລ້ວ", "ຄ້າງ", "ສະຖານະ"]}
-                empty="ບໍ່ມີງວດ (ຂໍ້ມູນ import ເກົ່າ)"
-                rows={dInst.map((i) => [
+                empty="✓ ຊຳລະຄົບທຸກງວດແລ້ວ"
+                rows={left.map((i) => [
                   i.seq === 0 ? "ດາວ/ຈອງ" : `ງວດ ${i.seq}`,
                   i.due_date ? fdate(i.due_date) : (i.due_condition === "after_deed_transfer" ? "ຫຼັງໂອນໃບຕາດິນ" : "—"),
-                  fmt(i.amount_due, drill.currency), fmt(paidOf(i) || null, drill.currency),
-                  Number(i.amount_due) > paidOf(i) ? <b key="o" className="text-brand-red">{fmt(Number(i.amount_due) - paidOf(i), drill.currency)}</b> : "—",
+                  fmt(i.amount_due, drill.currency), fmt(fifo[i.id] || null, drill.currency),
+                  Number(i.amount_due) > (fifo[i.id] || 0) ? <b key="o" className="text-brand-red">{fmt(Number(i.amount_due) - (fifo[i.id] || 0), drill.currency)}</b> : "—",
                   stOf(i),
                 ])} />
+              </>); })()}
             </div>
           </div>
         )}
