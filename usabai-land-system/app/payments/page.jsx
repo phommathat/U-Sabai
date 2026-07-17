@@ -31,15 +31,25 @@ function Payments() {
     setContracts(cons || []);
     const ids = (cons || []).map((c) => c.id);
     if (!ids.length) { setInst([]); setHist([]); setSoon([]); setPaidFull([]); return; }
-    const { data: ins } = await supabase.from("installments")
+    // ດຶງທຸກແຖວ (Supabase ຈຳກັດ 1000 ແຖວ/ຄັ້ງ → ດຶງເປັນໜ້າ)
+    const pageAll = async (mk) => {
+      let all = [], from = 0;
+      for (;;) {
+        const { data } = await mk().range(from, from + 999);
+        all = all.concat(data || []);
+        if (!data || data.length < 1000) return all;
+        from += 1000;
+      }
+    };
+    const ins = await pageAll(() => supabase.from("installments")
       .select("*, payments(id, amount_received)").in("contract_id", ids)
-      .order("due_date", { ascending: true, nullsFirst: false }).limit(1000);
-    setInst(ins || []);
-    const { data: pays } = await supabase.from("payments")
+      .order("due_date", { ascending: true, nullsFirst: false }));
+    setInst(ins);
+    const pays = await pageAll(() => supabase.from("payments")
       .select("id,receipt_no,pay_date,amount_received,currency,channel,note,contract_id,installment_id,created_at")
       .in("contract_id", ids).neq("pay_date", "1900-01-01")
-      .order("pay_date", { ascending: false }).limit(1000);
-    setHist(pays || []);
+      .order("pay_date", { ascending: false }));
+    setHist(pays);
     supabase.from("v_upcoming_installments_6d").select("*").in("project_id", projectIds)
       .order("due_date").then(({ data }) => setSoon(data || []));
     supabase.from("v_contracts_paid_full").select("*").in("project_id", projectIds)
@@ -51,13 +61,35 @@ function Payments() {
   const cmap = Object.fromEntries(contracts.map((c) => [c.id, c]));
   const instMap = Object.fromEntries(inst.map((i) => [i.id, i])); // installment_id → ງວດ (ໃຊ້ທຽບກຳນົດຈ່າຍ)
 
-  const enrich = inst.map((i) => {
-    const paid = (i.payments || []).reduce((s, p) => s + Number(p.amount_received || 0), 0);
-    const st = paid >= Number(i.amount_due) ? "paid"
-      : i.due_date && i.due_date < today ? "overdue"
-      : i.due_condition === "after_deed_transfer" ? "deed" : "due";
-    return { ...i, paid, st, c: cmap[i.contract_id] };
+  // ---- ຈັດສັນຍອດແບບສະສົມ (FIFO) ----
+  // ກົດ: ຈ່າຍບໍ່ເຕັມງວດ ≠ ຄ້າງຈ່າຍ · ຈ່າຍ 2-3 ເທົ່າ = ຄວບງວດທັດໄປອັດຕະໂນມັດ
+  const isDown = (p) => (p.note || "").includes("ຈ່າຍກ່ອນ");
+  const downPaidByC = {}; const instPoolByC = {};
+  hist.forEach((p) => {
+    const a = Number(p.amount_received || 0);
+    if (isDown(p)) downPaidByC[p.contract_id] = (downPaidByC[p.contract_id] || 0) + a;
+    else instPoolByC[p.contract_id] = (instPoolByC[p.contract_id] || 0) + a;
   });
+  const enrich = (() => {
+    const byC = {};
+    inst.forEach((i) => (byC[i.contract_id] = byC[i.contract_id] || []).push(i));
+    const out = [];
+    Object.entries(byC).forEach(([cid, list]) => {
+      let pool = instPoolByC[cid] || 0;   // ເງິນຄ່າງວດສະສົມ
+      let down = downPaidByC[cid] || 0;   // ເງິນດາວ/ຈອງ
+      list.sort((a, b) => a.seq - b.seq).forEach((i) => {
+        const due = Number(i.amount_due || 0);
+        let covered;
+        if (i.seq === 0) { covered = Math.min(down, due); down -= covered; }
+        else { covered = Math.min(pool, due); pool -= covered; }
+        const st = due <= 0 || covered >= due ? "paid"
+          : i.due_date && i.due_date < today ? (covered > 0 ? "partial" : "overdue")
+          : i.due_condition === "after_deed_transfer" ? "deed" : "due";
+        out.push({ ...i, paid: covered, st, c: cmap[cid] });
+      });
+    });
+    return out;
+  })();
   const filtered = enrich.filter((i) => tab === "all" ? true : i.st === tab);
 
   // ຍອດຄ້າງ "ຫຼັງ" ແຕ່ລະການຮັບເງິນ (ສະສົມຕາມລຳດັບເວລາ) — ໃຊ້ໃນຖັນຍອດຄ້າງ + ໃບມອບຮັບເງິນ
@@ -106,15 +138,19 @@ function Payments() {
   };
   const pickAddContract = async (cid) => {
     const c = (addForm.contracts || []).find((x) => x.id === cid);
-    const { data: ins } = await supabase.from("installments")
-      .select("*, payments(amount_received)").eq("contract_id", cid).order("seq");
-    // ງວດຕໍ່ໄປ = ງວດທຳອິດທີ່ຍັງຈ່າຍບໍ່ຄົບ (ຕໍ່ຈາກທີ່ຊຳລະຜ່ານມາ)
-    const next = (ins || []).find((i) => paidOf(i) < Number(i.amount_due)) || null;
-    setAddForm({
-      ...addForm, contract_id: cid, c, nextInst: next,
-      amount_received: next ? Number(next.amount_due) - paidOf(next) : "",
-      currency: c?.currency || "LAK",
-    });
+    const { data: ins } = await supabase.from("installments").select("*").eq("contract_id", cid).order("seq");
+    const { data: ps } = await supabase.from("payments").select("amount_received,note").eq("contract_id", cid).neq("pay_date", "1900-01-01");
+    // ງວດຕໍ່ໄປ = ງວດທຳອິດທີ່ຍອດສະສົມຍັງບໍ່ພໍ (FIFO — ຈ່າຍລ່ວງໜ້າຄວບງວດອັດຕະໂນມັດ)
+    let pool = (ps || []).filter((p) => !(p.note || "").includes("ຈ່າຍກ່ອນ")).reduce((s, p) => s + Number(p.amount_received || 0), 0);
+    let down = (ps || []).filter((p) => (p.note || "").includes("ຈ່າຍກ່ອນ")).reduce((s, p) => s + Number(p.amount_received || 0), 0);
+    let next = null, outAmt = "";
+    for (const i of ins || []) {
+      const due = Number(i.amount_due || 0);
+      const cov = i.seq === 0 ? Math.min(down, due) : Math.min(pool, due);
+      if (i.seq === 0) down -= cov; else pool -= cov;
+      if (due > 0 && cov < due && !next) { next = i; outAmt = due - cov; }
+    }
+    setAddForm({ ...addForm, contract_id: cid, c, nextInst: next, amount_received: outAmt, currency: c?.currency || "LAK" });
   };
   const saveAdd = async (e) => {
     e.preventDefault();
@@ -140,8 +176,12 @@ function Payments() {
 
   const ST = {
     paid: <Badge color="green">ຈ່າຍແລ້ວ</Badge>, overdue: <Badge color="red">ຄ້າງຊຳລະ</Badge>,
+    partial: <Badge color="amber">ຈ່າຍບາງສ່ວນ</Badge>,
     due: <Badge color="gray">ຍັງບໍ່ຮອດກຳນົດ</Badge>, deed: <Badge color="navy">ຈ່າຍຫຼັງໂອນໃບຕາດິນ</Badge>,
   };
+  // ໃກ້ຮອດກຳນົດ: ຕັດງວດທີ່ຖືກຄວບຈ່າຍລ່ວງໜ້າແລ້ວອອກ
+  const stById = Object.fromEntries(enrich.map((i) => [i.id, i.st]));
+  const soonLeft = soon.filter((i) => stById[i.id] !== "paid");
 
   // ---- drill-down ລາຍບຸກຄົນ ----
   const dc = drill ? cmap[drill] : null;
@@ -155,7 +195,7 @@ function Payments() {
 
   const TABS = [
     ["history", "ການຮັບເງິນ"],
-    ["soon", `ໃກ້ຮອດກຳນົດ 6 ວັນ${soon.length ? ` (${soon.length})` : ""}`],
+    ["soon", `ໃກ້ຮອດກຳນົດ 6 ວັນ${soonLeft.length ? ` (${soonLeft.length})` : ""}`],
     ["overdue", "ຄ້າງຊຳລະ"], ["paid100", "ຊຳລະຄົບ 100%"], ["all", "ທັງໝົດງວດ"],
   ];
 
@@ -191,7 +231,7 @@ function Payments() {
       {tab === "soon" && (
         <Table cols={["ສັນຍາ", "ລູກຄ້າ", "ເບີໂທ", "ງວດ", "ຄົບກຳນົດ", "ອີກ (ວັນ)", "ຍອດຄ້າງງວດ", ""]}
           empty="ບໍ່ມີງວດຄົບກຳນົດພາຍໃນ 6 ວັນ"
-          rows={soon.map((i) => [
+          rows={soonLeft.map((i) => [
             i.contract_no, custBtn(i.contract_id, i.full_name), i.tel || "—",
             i.seq === 0 ? "ດາວ/ຈອງ" : `ງວດ ${i.seq}`, fdate(i.due_date),
             <Badge key="d" color={i.days_left <= 2 ? "red" : "amber"}>{i.days_left} ວັນ</Badge>,
@@ -234,32 +274,40 @@ function Payments() {
               <div>ຕອນດິນ: <b>{dc.lots?.code || "—"}</b></div>
               <div>ເບີໂທ: <b>{dc.customers?.tel || "—"}</b></div>
               <div>ມູນຄ່າສັນຍາ: <b>{fmt(dc.sale_price, dc.currency)}</b></div>
+              <div>ເງິນດາວ: <b className="text-navy">{fmt(downPaidByC[dc.id] || null, dc.currency)}</b></div>
               <div>ຊຳລະແລ້ວ: <b className="text-brand-green">{fmt(dPaid, dc.currency)}</b></div>
               <div>ຍອດຄ້າງ: <b className="text-brand-red">{fmt(Math.max(Number(dc.sale_price) - dPaid, 0), dc.currency)}</b></div>
             </div>
             <div>
               <div className="font-semibold text-navy mb-1">ການຮັບເງິນ ({dPays.length})</div>
-              <Table cols={["ວັນທີ", "ເລກໃບຮັບເງິນ", "ຈຳນວນ", "ຍອດຄ້າງຫຼັງຈ່າຍ", "ໝາຍເຫດ", ""]}
+              <Table cols={["ວັນທີຈ່າຍ", "ງວດ", "ວັນກຳນົດຈ່າຍ", "ຈຳນວນ", "ຍອດຄ້າງຫຼັງຈ່າຍ", "ໝາຍເຫດ", ""]}
                 empty="ຍັງບໍ່ມີການຮັບເງິນ"
-                rows={dPays.map((p) => [
-                  fdate(p.pay_date), p.receipt_no || "—",
-                  <b key="a">{fmt(p.amount_received, p.currency)}</b>,
-                  remainAfter[p.id] > 0 ? fmt(remainAfter[p.id], dc.currency) : "ຄົບແລ້ວ ✓",
-                  punctual(p),
-                  <a key="pr" className="btn-o !py-0.5 !px-2 text-xs" href={`/print/receipt/${p.id}`} target="_blank">🖨</a>,
-                ])} />
+                rows={dPays.map((p) => {
+                  const li = p.installment_id ? instMap[p.installment_id] : null;
+                  return [
+                    fdate(p.pay_date),
+                    isDown(p) ? "ດາວ/ຈອງ" : li ? `ງວດ ${li.seq}` : (p.note?.match(/ງວດ\s*\d+[^·]*/)?.[0]?.trim() || "—"),
+                    li?.due_date ? fdate(li.due_date) : "—",
+                    <b key="a">{fmt(p.amount_received, p.currency)}</b>,
+                    remainAfter[p.id] > 0 ? fmt(remainAfter[p.id], dc.currency) : "ຄົບແລ້ວ ✓",
+                    punctual(p),
+                    <a key="pr" className="btn-o !py-0.5 !px-2 text-xs" href={`/print/receipt/${p.id}`} target="_blank">🖨</a>,
+                  ];
+                })} />
             </div>
             <div>
-              <div className="font-semibold text-navy mb-1">ຕາຕະລາງງວດ — ແຜນກຳນົດຈ່າຍ ({dInst.length})</div>
+              {(() => { const left = dInst.filter((i) => i.st !== "paid"); return (<>
+              <div className="font-semibold text-navy mb-1">ຕາຕະລາງງວດ — ຄ້າງ ແລະ ຕ້ອງຊຳລະຕໍ່ໄປ ({left.length})</div>
               <Table cols={["ງວດ", "ຄົບກຳນົດ", "ຕາມກຳນົດ", "ຮັບແລ້ວ", "ຄ້າງ", "ສະຖານະ"]}
-                empty="ບໍ່ມີງວດ (ຂໍ້ມູນ import ເກົ່າ)"
-                rows={dInst.map((i) => [
+                empty="✓ ຊຳລະຄົບທຸກງວດແລ້ວ"
+                rows={left.map((i) => [
                   i.seq === 0 ? "ດາວ/ຈອງ" : `ງວດ ${i.seq}`,
                   i.due_date ? fdate(i.due_date) : (i.due_condition === "after_deed_transfer" ? "ຫຼັງໂອນໃບຕາດິນ" : "—"),
                   fmt(i.amount_due, dc.currency), fmt(i.paid || null, dc.currency),
                   Number(i.amount_due) > i.paid ? <b key="o" className="text-brand-red">{fmt(Number(i.amount_due) - i.paid, dc.currency)}</b> : "—",
                   ST[i.st],
                 ])} />
+              </>); })()}
             </div>
           </div>
         )}
