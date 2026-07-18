@@ -51,6 +51,7 @@ export default function PrintPage() {
   const [d, setD] = useState(null);
   const [seller, setSeller] = useState(null); // ຜູ້ຂາຍ = profile ຜູ້ໃຊ້ທີ່ login
   const [rem, setRem] = useState(null); // ຍອດເຫຼືອຫຼັງການຊຳລະຄັ້ງນີ້ (ໃບມອບຮັບເງິນ)
+  const [firstPay, setFirstPay] = useState(0); // ເງິນຮັບຄັ້ງທຳອິດ (fallback ເງິນດາວ/ງວດ 1 ຂອງສັນຍາ import)
   const [err, setErr] = useState("");
 
   useEffect(() => {
@@ -74,6 +75,16 @@ export default function PrintPage() {
       const { data, error } = await q;
       if (error) { setErr(error.message); return; }
       setD(data);
+      // ສັນຍາ: ດຶງເງິນຮັບຄັ້ງທຳອິດ (ຕາມ pay_date) ເປັນ fallback ຂອງ "ງວດທີ 1 / ເງິນດາວ"
+      // ເພາະສັນຍາ import ບໍ່ມີ down_payment ແລະ ບໍ່ມີງວດ 0 — ເງິນມື້ເຮັດສັນຍາຢູ່ໃນຕາຕະລາງ payments
+      if (type === "contract" && data?.id) {
+        const { data: ps } = await supabase.from("payments")
+          .select("amount_received,pay_date,created_at").eq("contract_id", data.id);
+        if (ps && ps.length) {
+          ps.sort((a, b) => (String(a.pay_date) + a.created_at).localeCompare(String(b.pay_date) + b.created_at));
+          setFirstPay(Number(ps[0].amount_received || 0));
+        }
+      }
       // ໃບມອບຮັບເງິນ: ຄິດຍອດເຫຼືອ ຫຼັງການຊຳລະຄັ້ງນີ້ (ສະສົມຕາມລຳດັບເວລາ)
       if (type === "receipt" && data?.contract_id) {
         const { data: ps } = await supabase.from("payments")
@@ -127,8 +138,12 @@ export default function PrintPage() {
     const cu = d.customers || {}, lo = d.lots || {}, pr = d.projects || {};
     const isCash = d.pay_type === "cash";
     const seq0 = (d.installments || []).find((i) => i.seq === 0); // ງວດ 0 = ເງິນດາວ
-    // ເງິນດາວ: ດຶງຈາກ down_payment ຫຼື ຖ້າຫວ່າງ = ຈຳນວນງວດ 0 ໃນຕາຕະລາງງວດ
-    const pay1 = isCash ? Number(d.cash_pay1 || 0) : (Number(d.down_payment || 0) || Number(seq0?.amount_due || 0));
+    // ເງິນດາວ / ງວດທີ 1 (ເງິນມື້ເຮັດສັນຍາ): ໄລ່ຕາມລຳດັບ —
+    //   1) down_payment/cash_pay1 ທີ່ຄີໃນຟອມ  2) ງວດ 0  3) ເງິນມື້ຈອງ (booking_fee)  4) ເງິນຮັບຄັ້ງທຳອິດຈິງ
+    // ສັນຍາ import ບໍ່ມີ down_payment → ໃຊ້ເງິນຮັບຈິງ ເພື່ອບໍ່ໃຫ້ຊ່ອງ "ງວດທີ 1" ຫວ່າງ
+    const pay1 = isCash
+      ? (Number(d.cash_pay1 || 0) || Number(d.booking_fee || 0) || firstPay || 0)
+      : (Number(d.down_payment || 0) || Number(seq0?.amount_due || 0) || Number(d.booking_fee || 0) || firstPay || 0);
     const rest = Number(d.sale_price || 0) - pay1;
     const months = Number(d.n_installments || 0) * Number(d.installment_period_months || 1);
     const ins = (d.installments || []).filter((i) => i.seq > 0).sort((a, b) => a.seq - b.seq);
@@ -147,11 +162,12 @@ export default function PrintPage() {
             .contract-sheet .c-note { font-size: 9px !important; }
             .contract-sheet .sig-area { margin-top: 8px !important; }
             .contract-sheet .sig-gap { margin-top: 40px !important; }
+            .contract-sheet .c-logo { width: 26mm !important; height: 26mm !important; }
           }
         `}</style>
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
         <div className="relative">
-          <img src="/logo-mark.png" alt="U-Sabai" className="absolute left-0 top-0 w-16 h-16 object-contain" />
+          <img src="/logo-mark.png" alt="U-Sabai" className="c-logo absolute left-0 -top-1 w-28 h-28 object-contain" />
           <LaoHeader no={d.contract_no} date={d.sign_date} />
         </div>
         <div className="c-title text-center text-xl font-bold my-3 underline underline-offset-4">ສັນຍາຊື້-ຂາຍດິນ</div>
@@ -252,7 +268,15 @@ export default function PrintPage() {
       { amt: d.deposit3_amount, date: d.deposit3_date, label: "ງວດທີ 3: ຜູ້ຊື້ນັດຈ່າຍຄັ້ງຕໍ່ໄປ" },
     ];
     return (
-      <div className="max-w-[860px] mx-auto p-8 bg-white min-h-screen text-black text-[15.5px] leading-[2.05] text-justify">
+      <div className="dep-sheet max-w-[860px] mx-auto p-8 bg-white min-h-screen text-black text-[15.5px] leading-[2.05] text-justify">
+        <style>{`
+          @media print {
+            @page { size: A4 portrait; margin: 9mm; }
+            .dep-sheet { font-size: 12.5px !important; line-height: 1.55 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
+            .dep-sheet .d-note { font-size: 11px !important; }
+            .dep-sheet .sig-gap { margin-top: 46px !important; }
+          }
+        `}</style>
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
         <div className="relative">
           <img src="/logo-mark.png" alt="U-Sabai" className="absolute left-0 top-0 w-20 h-20 object-contain" />
@@ -289,7 +313,7 @@ export default function PrintPage() {
             ແລະ ຜູ້ຂາຍກໍ່ສາມາດນຳເອົາດິນຕອນດັ່ງກ່າວໄປຂາຍຕໍ່ໃຫ້ບຸກຄົນອື່ນໄດ້ ແລະ ຖືວ່າສັນຍາສະບັບນີ້ເປັນໂມຄະ
             ແລະ ຜູ້ຂາຍກໍ່ຈະບໍ່ສົ່ງເງິນມັດຈຳຄືນ.
           </div>
-          <div className="pl-4 text-[12.5px]">
+          <div className="d-note pl-4 text-[12.5px]">
             <b>ໝາຍເຫດ:</b> ໃນກໍລະນີທີ່ຜູ້ຊື້ຫາກມີການປ່ຽນແປງ, ບໍ່ຊື້ດິນ, ຜູ້ຊື້ຕ້ອງໄດ້ແຈ້ງພາຍໃນ 07 ວັນ ຫຼັງຈາກທີ່ຈ່າຍເງິນມັດຈຳ
             ຫຼື ແຈ້ງກ່ອນລ່ວງໜ້າມື້ນັດຊຳລະເງິນ, ຜູ້ຂາຍຈຶ່ງຈະຄືນເງິນມັດຈຳໃຫ້ 50% ຂອງມູນຄ່າມັດຈຳ
           </div>
@@ -301,8 +325,8 @@ export default function PrintPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-10 mt-8 text-center font-bold">
-          <div>ລາຍເຊັນຜູ້ຊື້<div className="mt-20 font-normal text-[12px]">{cu.full_name}</div></div>
-          <div>ລາຍເຊັນຜູ້ຂາຍ<div className="mt-20 font-normal text-[12px]">{seller?.full_name}</div></div>
+          <div>ລາຍເຊັນຜູ້ຊື້<div className="sig-gap mt-20 font-normal text-[12px]">{cu.full_name}</div></div>
+          <div>ລາຍເຊັນຜູ້ຂາຍ<div className="sig-gap mt-20 font-normal text-[12px]">{seller?.full_name}</div></div>
         </div>
         <div className="grid grid-cols-2 gap-10 mt-6 text-[13px]">
           <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (1) <Dot w="170px" /></div>
