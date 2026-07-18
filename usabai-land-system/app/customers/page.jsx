@@ -1,11 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import Shell, { useApp } from "@/components/Shell";
-import { Badge, Modal, Field, Table } from "@/components/ui";
+import { Badge, Modal, Field, Table, Pager, usePager } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { fmt, fdate, DEED_STAGE } from "@/lib/fmt";
-
-const PER_PAGE = 50;
 
 function Customers() {
   const { projectIds } = useApp();
@@ -13,7 +11,6 @@ function Customers() {
   const [contracts, setContracts] = useState([]);
   const [bal, setBal] = useState({});
   const [q, setQ] = useState("");
-  const [page, setPage] = useState(1);
   const [form, setForm] = useState(null);
   const [drill, setDrill] = useState(null);   // ສັນຍາທີ່ເປີດເບິ່ງປະຫວັດຈ່າຍ
   const [dInst, setDInst] = useState([]);
@@ -130,10 +127,7 @@ function Customers() {
   });
 
   // ---- pagination: 50 ຄົນ/ໜ້າ ----
-  useEffect(() => { setPage(1); }, [q, projectIds]);
-  const pageCount = Math.max(1, Math.ceil(list.length / PER_PAGE));
-  const cur = Math.min(page, pageCount);
-  const pageRows = list.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
+  const pg = usePager(list, [q, projectIds]);
 
   return (
     <>
@@ -143,7 +137,7 @@ function Customers() {
         <button className="btn-p" onClick={() => setForm({})}>+ ເພີ່ມລູກຄ້າ</button>
       </div>
       <Table cols={["ລະຫັດ", "ຊື່ ແລະ ນາມສະກຸນ", "ເບີໂທ", "ຊື້ໂຄງການ / ຕອນ", "ວັນເຮັດສັນຍາ", "ສະຖານະຈ່າຍ", "ໃບຕາດິນ", ""]}
-        rows={pageRows.map((c) => {
+        rows={pg.rows.map((c) => {
           const cs = byCust[c.id] || [];
           const cell = (fn) => cs.length
             ? <div key="x" className="space-y-1">{cs.map((ct) => <div key={ct.id}>{fn(ct)}</div>)}</div>
@@ -181,23 +175,7 @@ function Customers() {
         })} />
 
       {/* ---- ໜ້າ: 50 ຄົນ/ໜ້າ ---- */}
-      {pageCount > 1 && (
-        <div className="flex gap-1 mt-4 items-center justify-center flex-wrap">
-          <button className="btn-o !py-1 !px-3 text-xs" disabled={cur <= 1} onClick={() => setPage(cur - 1)}>‹ ກ່ອນ</button>
-          {Array.from({ length: pageCount }, (_, i) => i + 1)
-            .filter((n) => n === 1 || n === pageCount || Math.abs(n - cur) <= 2)
-            .map((n, i, arr) => (
-              <span key={n} className="flex items-center gap-1">
-                {i > 0 && arr[i - 1] !== n - 1 && <span className="text-slate-400 px-1">…</span>}
-                <button
-                  className={n === cur ? "btn-p !py-1 !px-3 text-xs" : "btn-o !py-1 !px-3 text-xs"}
-                  onClick={() => setPage(n)}>{n}</button>
-              </span>
-            ))}
-          <button className="btn-o !py-1 !px-3 text-xs" disabled={cur >= pageCount} onClick={() => setPage(cur + 1)}>ຕໍ່ໄປ ›</button>
-          <span className="text-xs text-slate-500 ml-2">ໜ້າ {cur}/{pageCount} · ທັງໝົດ {list.length} ຄົນ</span>
-        </div>
-      )}
+      <Pager pg={pg} unit="ຄົນ" />
 
       {/* ---- ປະຫວັດການຈ່າຍ (ຄືເມນູການຊຳລະ) ---- */}
       <Modal open={!!drill} title={drill ? `${drill.customer?.full_name} — ${drill.projects?.name} · ຕອນ ${drill.lots?.code}` : ""} onClose={() => setDrill(null)} wide>
