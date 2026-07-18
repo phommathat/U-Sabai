@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Shell, { useApp } from "@/components/Shell";
-import { Badge, Modal, Field, Table } from "@/components/ui";
+import { Badge, Modal, Field, Table, Pager, usePager } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { fmt, fdate, PAY_TYPE, CONTRACT_STATUS, buildInstallments } from "@/lib/fmt";
 
@@ -20,14 +20,14 @@ function Contracts() {
     if (!projectIds.length) return;
     supabase.from("contracts")
       .select("*, lots(code), customers(code,full_name)")
-      .in("project_id", projectIds).order("created_at", { ascending: false }).limit(300)
+      .in("project_id", projectIds).order("created_at", { ascending: false }).limit(2000)
       .then(({ data }) => setRows(data || []));
     supabase.from("v_contract_balance").select("*").in("project_id", projectIds)
       .then(({ data }) => setBal(Object.fromEntries((data || []).map((b) => [b.id, b]))));
     if (projectId)
       supabase.from("lots").select("id,code,list_price,currency").eq("project_id", projectId)
         .in("status", ["available", "reserved"]).order("code").then(({ data }) => setLots(data || []));
-    supabase.from("customers").select("id,code,full_name,tel,village,occupation").order("code").limit(500)
+    supabase.from("customers").select("id,code,full_name,tel,village,occupation").order("code").limit(2000)
       .then(({ data }) => setCusts(data || []));
   };
   useEffect(() => { load(); }, [projectIds]);
@@ -109,6 +109,8 @@ function Contracts() {
     alert(`ບັນທຶກສັນຍາ ${contractNo} ສຳເລັດ — ສ້າງ ${inst.length} ງວດອັດຕະໂນມັດ`);
   };
 
+  const pg = usePager(rows, [projectIds]); // 50 ສັນຍາ/ໜ້າ
+
   const isInst = form?.pay_type === "installment";
   const isCash = form?.pay_type === "cash";
   const isNew = form?.mode !== "old";
@@ -124,7 +126,7 @@ function Contracts() {
         </button>
       </div>
       <Table cols={["ເລກສັນຍາ", "ລູກຄ້າ", "ຕອນ", "ປະເພດ", "ມູນຄ່າ", "ຊຳລະແລ້ວ", "ຍອດຄ້າງ", "%", "ສະຖານະ", ""]}
-        rows={rows.map((c) => {
+        rows={pg.rows.map((c) => {
           const b = bal[c.id] || {};
           const done = (b.pct_paid || 0) >= 100;
           return [
@@ -143,6 +145,7 @@ function Contracts() {
             <a key="pr" className="btn-o !py-1 !px-2 text-xs" href={`/print/contract/${c.id}`} target="_blank">🖨</a>,
           ];
         })} />
+      <Pager pg={pg} unit="ສັນຍາ" />
 
       <Modal open={!!form} title="ສ້າງສັນຍາໃໝ່" onClose={() => setForm(null)} wide>
         {form && (
