@@ -85,7 +85,7 @@ function Contracts() {
       sign_date: form.sign_date, pay_type: form.pay_type,
       list_price: num(form.list_price), discount: form.discount || 0, sale_price: num(form.sale_price),
       currency: form.currency, booking_fee: form.booking_fee || 0, down_payment: form.down_payment || 0,
-      n_deeds: num(form.n_deeds) || 1,
+      n_deeds: num(form.n_deeds) || 1, pay_other: form.pay_other || null,
       n_installments: num(form.n_installments), installment_period_months: form.installment_period_months || 1,
       installment_amt: num(form.installment_amt), first_due_date: num(form.first_due_date),
       cash_pay1: num(form.cash_pay1), cash_pay2: num(form.cash_pay2),
@@ -194,8 +194,12 @@ function Contracts() {
                 <option value="installment">ຜ່ອນເປັນງວດ</option>
                 <option value="cash">ຈ່າຍສົດ (ກຳນົດງວດເອງ)</option>
                 <option value="bank">ຜ່ານທະນາຄານ</option>
+                <option value="other">ຮູບແບບອື່ນ</option>
               </select>
             </Field>
+            {!isInst && !isCash && (
+              <Field label="ລາຍລະອຽດການຈ່າຍ (ຮູບແບບອື່ນ)"><input className="inp" value={form.pay_other || ""} placeholder="ເຊັ່ນ: ໂອນຜ່ານ BCEL One 2 ງວດ..." onChange={(e) => setForm({ ...form, pay_other: e.target.value })} /></Field>
+            )}
             {isInst && (<>
               <Field label="ເງິນມື້ເຮັດສັນຍາ"><input className="inp" type="number" value={form.down_payment || ""} onChange={(e) => setForm({ ...form, down_payment: e.target.value })} /></Field>
               <Field label="ຈຳນວນງວດ *"><input className="inp" type="number" required value={form.n_installments || ""} onChange={(e) => setForm({ ...form, n_installments: e.target.value })} /></Field>
