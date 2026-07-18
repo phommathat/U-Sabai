@@ -1,35 +1,44 @@
 "use client";
 import { useEffect, useState } from "react";
-import Shell from "@/components/Shell";
+import Shell, { useApp } from "@/components/Shell";
 import { Badge, Modal, Field, Table } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { fmt, fdate, DEED_STAGE } from "@/lib/fmt";
 
+const PER_PAGE = 50;
+
 function Customers() {
+  const { projectIds } = useApp();
   const [rows, setRows] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [bal, setBal] = useState({});
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
   const [form, setForm] = useState(null);
   const [drill, setDrill] = useState(null);   // ສັນຍາທີ່ເປີດເບິ່ງປະຫວັດຈ່າຍ
   const [dInst, setDInst] = useState([]);
   const [dPays, setDPays] = useState([]);
 
   const load = () => {
-    supabase.from("customers").select("*").order("code").limit(500)
+    supabase.from("customers").select("*").order("code").limit(2000)
       .then(({ data }) => setRows(data || []));
-    // ສັນຍາທຸກໂຄງການ ຂອງທຸກລູກຄ້າ (ລູກຄ້າເປັນຂໍ້ມູນລວມ ບໍ່ຂຶ້ນກັບໂຄງການທີ່ເລືອກ)
+    // ໂຫຼດສັນຍາທຸກໂຄງການ ແລ້ວ filter ຕາມໂຄງການທີ່ເລືອກຕອນສະແດງຜົນ
     supabase.from("contracts")
       .select("id,contract_no,sign_date,customer_id,project_id,currency,sale_price, lots(code), projects(code,name), title_deeds(stage)")
-      .neq("status", "cancelled").limit(1000)
+      .neq("status", "cancelled").limit(3000)
       .then(({ data }) => setContracts(data || []));
-    supabase.from("v_contract_balance").select("id,total_paid,balance,pct_paid").limit(1000)
+    supabase.from("v_contract_balance").select("id,total_paid,balance,pct_paid").limit(3000)
       .then(({ data }) => setBal(Object.fromEntries((data || []).map((b) => [b.id, b]))));
   };
   useEffect(() => { load(); }, []);
 
+  // ສັນຍາທັງໝົດຂອງແຕ່ລະລູກຄ້າ + ສະເພາະໂຄງການທີ່ເລືອກ
+  const byCustAll = {};
+  contracts.forEach((c) => (byCustAll[c.customer_id] = byCustAll[c.customer_id] || []).push(c));
   const byCust = {};
-  contracts.forEach((c) => (byCust[c.customer_id] = byCust[c.customer_id] || []).push(c));
+  Object.entries(byCustAll).forEach(([k, cs]) => {
+    byCust[k] = cs.filter((c) => projectIds.includes(c.project_id));
+  });
 
   const save = async (e) => {
     e.preventDefault();
@@ -107,17 +116,34 @@ function Customers() {
   }[stKey(i)]);
   const dPaid = dPays.reduce((s, p) => s + Number(p.amount_received || 0), 0);
 
-  const list = rows.filter((r) => !q || r.full_name?.includes(q) || r.tel?.includes(q) || r.code?.includes(q));
+  const list = rows.filter((r) => {
+    // filter ຕາມໂຄງການທີ່ເລືອກ: ລູກຄ້າທີ່ມີສັນຍາ ຕ້ອງມີສັນຍາໃນໂຄງການທີ່ເລືອກ
+    // (ລູກຄ້າທີ່ຍັງບໍ່ມີສັນຍາເລີຍ ສະແດງທຸກກໍລະນີ ເພື່ອບໍ່ໃຫ້ລູກຄ້າໃໝ່ຫາຍ)
+    const all = byCustAll[r.id] || [];
+    if (all.length && !(byCust[r.id] || []).length) return false;
+    if (!q) return true;
+    const s = q.trim().toLowerCase();
+    return r.full_name?.toLowerCase().includes(s) || r.tel?.includes(s) || r.code?.toLowerCase().includes(s)
+      // ຄົ້ນຕາມຕອນດິນ (ລະຫັດຕອນ) ຫຼື ເລກສັນຍາ
+      || (byCust[r.id] || []).some((ct) =>
+        ct.lots?.code?.toLowerCase().includes(s) || ct.contract_no?.toLowerCase().includes(s));
+  });
+
+  // ---- pagination: 50 ຄົນ/ໜ້າ ----
+  useEffect(() => { setPage(1); }, [q, projectIds]);
+  const pageCount = Math.max(1, Math.ceil(list.length / PER_PAGE));
+  const cur = Math.min(page, pageCount);
+  const pageRows = list.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
 
   return (
     <>
       <div className="flex gap-3 mb-4 flex-wrap items-center">
-        <h2 className="text-lg font-bold text-navy">ລູກຄ້າ ({rows.length})</h2>
-        <input className="inp !w-64 ml-auto" placeholder="🔍 ຄົ້ນຫາ ຊື່/ເບີໂທ/ລະຫັດ..." value={q} onChange={(e) => setQ(e.target.value)} />
+        <h2 className="text-lg font-bold text-navy">ລູກຄ້າ ({list.length})</h2>
+        <input className="inp !w-64 ml-auto" placeholder="🔍 ຄົ້ນຫາ ຊື່/ເບີໂທ/ລະຫັດ/ຕອນດິນ..." value={q} onChange={(e) => setQ(e.target.value)} />
         <button className="btn-p" onClick={() => setForm({})}>+ ເພີ່ມລູກຄ້າ</button>
       </div>
       <Table cols={["ລະຫັດ", "ຊື່ ແລະ ນາມສະກຸນ", "ເບີໂທ", "ຊື້ໂຄງການ / ຕອນ", "ວັນເຮັດສັນຍາ", "ສະຖານະຈ່າຍ", "ໃບຕາດິນ", ""]}
-        rows={list.slice(0, 100).map((c) => {
+        rows={pageRows.map((c) => {
           const cs = byCust[c.id] || [];
           const cell = (fn) => cs.length
             ? <div key="x" className="space-y-1">{cs.map((ct) => <div key={ct.id}>{fn(ct)}</div>)}</div>
@@ -153,6 +179,25 @@ function Customers() {
             <button key="e" className="btn-o !py-1 !px-3 text-xs" onClick={() => setForm(c)}>ແກ້ໄຂ</button>,
           ];
         })} />
+
+      {/* ---- ໜ້າ: 50 ຄົນ/ໜ້າ ---- */}
+      {pageCount > 1 && (
+        <div className="flex gap-1 mt-4 items-center justify-center flex-wrap">
+          <button className="btn-o !py-1 !px-3 text-xs" disabled={cur <= 1} onClick={() => setPage(cur - 1)}>‹ ກ່ອນ</button>
+          {Array.from({ length: pageCount }, (_, i) => i + 1)
+            .filter((n) => n === 1 || n === pageCount || Math.abs(n - cur) <= 2)
+            .map((n, i, arr) => (
+              <span key={n} className="flex items-center gap-1">
+                {i > 0 && arr[i - 1] !== n - 1 && <span className="text-slate-400 px-1">…</span>}
+                <button
+                  className={n === cur ? "btn-p !py-1 !px-3 text-xs" : "btn-o !py-1 !px-3 text-xs"}
+                  onClick={() => setPage(n)}>{n}</button>
+              </span>
+            ))}
+          <button className="btn-o !py-1 !px-3 text-xs" disabled={cur >= pageCount} onClick={() => setPage(cur + 1)}>ຕໍ່ໄປ ›</button>
+          <span className="text-xs text-slate-500 ml-2">ໜ້າ {cur}/{pageCount} · ທັງໝົດ {list.length} ຄົນ</span>
+        </div>
+      )}
 
       {/* ---- ປະຫວັດການຈ່າຍ (ຄືເມນູການຊຳລະ) ---- */}
       <Modal open={!!drill} title={drill ? `${drill.customer?.full_name} — ${drill.projects?.name} · ຕອນ ${drill.lots?.code}` : ""} onClose={() => setDrill(null)} wide>
