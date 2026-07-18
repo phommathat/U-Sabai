@@ -64,7 +64,7 @@ export default function PrintPage() {
       if (type === "receipt")
         q = supabase.from("payments").select("*, installments(seq), contracts(contract_no, currency, sale_price, customers(full_name, first_name, last_name, tel, village, district, province), lots(code, size_sqm), projects(name, village, district, province))").eq("id", id).single();
       else if (type === "booking")
-        q = supabase.from("bookings").select("*, customers(full_name, tel, village, district), lots(code, size_sqm, list_price, currency), projects(name)").eq("id", id).single();
+        q = supabase.from("bookings").select(`*, customers(${CUSTOMER_COLS}), lots(code, size_sqm, list_price, currency), projects(name, village, district, province)`).eq("id", id).single();
       else if (type === "deposit")
         q = supabase.from("bookings").select(`*, customers(${CUSTOMER_COLS}), lots(code, size_sqm, list_price, currency), projects(name, village, district, province)`).eq("id", id).single();
       else if (type === "handover")
@@ -126,7 +126,9 @@ export default function PrintPage() {
   if (type === "contract") {
     const cu = d.customers || {}, lo = d.lots || {}, pr = d.projects || {};
     const isCash = d.pay_type === "cash";
-    const pay1 = isCash ? Number(d.cash_pay1 || 0) : Number(d.down_payment || 0);
+    const seq0 = (d.installments || []).find((i) => i.seq === 0); // ງວດ 0 = ເງິນດາວ
+    // ເງິນດາວ: ດຶງຈາກ down_payment ຫຼື ຖ້າຫວ່າງ = ຈຳນວນງວດ 0 ໃນຕາຕະລາງງວດ
+    const pay1 = isCash ? Number(d.cash_pay1 || 0) : (Number(d.down_payment || 0) || Number(seq0?.amount_due || 0));
     const rest = Number(d.sale_price || 0) - pay1;
     const months = Number(d.n_installments || 0) * Number(d.installment_period_months || 1);
     const ins = (d.installments || []).filter((i) => i.seq > 0).sort((a, b) => a.seq - b.seq);
@@ -148,7 +150,10 @@ export default function PrintPage() {
           }
         `}</style>
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
-        <LaoHeader no={d.contract_no} date={d.sign_date} />
+        <div className="relative">
+          <img src="/logo-mark.png" alt="U-Sabai" className="absolute left-0 top-0 w-16 h-16 object-contain" />
+          <LaoHeader no={d.contract_no} date={d.sign_date} />
+        </div>
         <div className="c-title text-center text-xl font-bold my-3 underline underline-offset-4">ສັນຍາຊື້-ຂາຍດິນ</div>
 
         <div className="space-y-1">
@@ -185,7 +190,7 @@ export default function PrintPage() {
             {" "}ຈົນຄົບຈຳນວນ <Dot v={rest > 0 ? fmt(rest, d.currency) : null} w="130px" />
           </div>
           <div className="pl-4">
-            <Chk on={d.pay_type !== "cash" && d.pay_type !== "installment"} /> ຈ່າຍຮູບແບບອື່ນ <Dot v={d.pay_type !== "cash" && d.pay_type !== "installment" ? PAY_TYPE[d.pay_type] : null} w="300px" />
+            <Chk on={d.pay_type !== "cash" && d.pay_type !== "installment"} /> ຈ່າຍຮູບແບບອື່ນ <Dot v={d.pay_type !== "cash" && d.pay_type !== "installment" ? (d.pay_other || PAY_TYPE[d.pay_type]) : null} w="300px" />
           </div>
           <div>4. ຮູບແບບການຊຳລະເງິນແມ່ນສາມາດເຂົ້າມາຊຳລະກັບຜູ້ຂາຍໂດຍກົງ, ຊຳລະໂດຍໂອນຈ່າຍຜ່ານທະນາຄານ ຫຼື ຜ່ານລະບົບ BCEL One</div>
           <div>5. ຜູ້ຂາຍຈະເປັນຜູ້ຮັບຜິດຊອບແລ່ນມອບໂອນກຳມະສິດທີ່ດິນໃຫ້ກັບຜູ້ຊື້ ແລະ ເກັບຮັກສາໃບຕາດິນສະບັບແທ້ໄວ້ກັບຜູ້ຂາຍຈົນກວ່າລູກຄ້າຈະຊຳລະຄ່າດິນໝົດ.</div>
@@ -241,8 +246,9 @@ export default function PrintPage() {
     const cu = d.customers || {}, lo = d.lots || {}, pr = d.projects || {};
     const cur = d.currency || lo.currency || "LAK";
     const dep = [
+      // ງວດ 1 = ມື້ອອກໃບມັດຈຳ (booking_date) · ງວດ 2 = ມື້ນັດເຮັດສັນຍາ (contract_due_date)
       { amt: d.deposit_amount, date: d.deposit1_date || d.booking_date, label: "ງວດທີ 1: ຜູ້ຊື້ໄດ້ຕົກລົງຈ່າຍເງິນມັດຈຳ" },
-      { amt: d.deposit2_amount, date: d.deposit2_date, label: "ງວດທີ 2: ຜູ້ຊື້ນັດຈ່າຍຄັ້ງຕໍ່ໄປ" },
+      { amt: d.deposit2_amount, date: d.deposit2_date || d.contract_due_date, label: "ງວດທີ 2: ຜູ້ຊື້ນັດຈ່າຍໃນມື້ເຮັດສັນຍາ" },
       { amt: d.deposit3_amount, date: d.deposit3_date, label: "ງວດທີ 3: ຜູ້ຊື້ນັດຈ່າຍຄັ້ງຕໍ່ໄປ" },
     ];
     return (
@@ -411,6 +417,56 @@ export default function PrintPage() {
     );
   }
 
+  // ---------- ໃບຈອງດິນ (layout ທາງການ ຕາມ template ບໍລິສັດ) ----------
+  if (type === "booking") {
+    const cu = d.customers || {}, lo = d.lots || {}, pr = d.projects || {};
+    const cur = d.currency || lo.currency || "LAK";
+    return (
+      <div className="max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[13.5px] leading-[1.9] text-justify">
+        <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
+        <div className="relative">
+          <img src="/logo-mark.png" alt="U-Sabai" className="absolute left-0 top-0 w-16 h-16 object-contain" />
+          <LaoHeader no={d.booking_no} date={d.booking_date} />
+        </div>
+        <div className="text-center text-xl font-bold my-3 underline underline-offset-4">ໃບຈອງດິນ</div>
+
+        <div className="space-y-1">
+          <SellerLine />
+          <ProjectLine pr={pr} />
+          <div>
+            ໄດ້ຮັບການຈອງດິນຈັດສັນລ໋ອກທີ <Dot v={lo.code} w="80px" /> ຂະໜາດ <Dot w="90px" />
+            {" "}ເນື້ອທີ່ດິນ <Dot v={lo.size_sqm ? Number(lo.size_sqm) + " ຕລມ" : null} w="90px" />
+            {" "}ມູນຄ່າ <Dot v={lo.list_price ? fmt(lo.list_price, lo.currency) : null} w="140px" />
+            {" "}ຈາກ <BuyerInline cu={cu} />
+          </div>
+        </div>
+
+        <div className="mt-2 space-y-1">
+          <div>
+            1. ຜູ້ຊື້ໄດ້ວາງເງິນຈອງ (ມັດຈຳ) ຈຳນວນ <Dot v={d.deposit_amount ? fmt(d.deposit_amount, cur) : null} w="160px" />
+            {" "}(<Dot v={moneyWords(d.deposit_amount, cur)} w="220px" />) ໃນວັນທີ <Dot v={fdate(d.booking_date)} w="110px" />
+          </div>
+          <div>
+            2. ຜູ້ຊື້ຕ້ອງມາເຮັດສັນຍາຊື້-ຂາຍ ພາຍໃນວັນທີ <Dot v={d.contract_due_date ? fdate(d.contract_due_date) : null} w="110px" />.
+          </div>
+          <div className="pl-4 text-[12.5px]">
+            <b>ໝາຍເຫດ:</b> ຫາກກາຍກຳນົດເຮັດສັນຍາຂ້າງເທິງໂດຍບໍ່ແຈ້ງເຫດຜົນ, ບໍລິສັດສະຫງວນສິດພິຈາລະນາການຈອງຄືນ
+            ແລະ ເງື່ອນໄຂການຄືນເງິນຈອງແມ່ນເປັນໄປຕາມນະໂຍບາຍຂອງບໍລິສັດ.
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-10 mt-10 text-center font-bold">
+          <div>ລາຍເຊັນຜູ້ຈອງ<div className="mt-20 font-normal text-[12px]">{cu.full_name}</div></div>
+          <div>ລາຍເຊັນຜູ້ຮັບຈອງ<div className="mt-20 font-normal text-[12px]">{seller?.full_name}</div></div>
+        </div>
+
+        <div className="no-print text-center text-[11px] text-slate-400 mt-8">
+          ອອກໂດຍລະບົບ U-Sabai Land System · ວັນທີພິມ {today}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-[700px] mx-auto p-8 bg-white min-h-screen text-slate-800">
       <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
@@ -420,23 +476,6 @@ export default function PrintPage() {
         <div className="text-[10px] tracking-[4px] text-slate-500">LAND AND HOUSE</div>
         <div className="text-base font-bold text-navy mt-3">{TITLES[type]}</div>
       </div>
-
-      {type === "booking" && (<>
-        <Row l="ເລກທີໃບຈອງ" v={d.booking_no} />
-        <Row l="ວັນທີຈອງ" v={fdate(d.booking_date)} />
-        <Row l="ໂຄງການ" v={d.projects?.name} />
-        <Row l="ຕອນດິນ" v={`${d.lots?.code} — ${Number(d.lots?.size_sqm)} ຕລມ`} />
-        <Row l="ລາຄາຕັ້ງ" v={fmt(d.lots?.list_price, d.lots?.currency)} />
-        <Row l="ຜູ້ຈອງ" v={`${d.customers?.full_name} (${d.customers?.tel || "—"})`} />
-        <div className="bg-slate-50 border-2 border-navy rounded-xl text-center p-5 my-5">
-          <div className="text-xs text-slate-500">ເງິນມັດຈຳ</div>
-          <div className="text-3xl font-bold text-navy mt-1">{fmt(d.deposit_amount)}</div>
-        </div>
-        <div className="border-2 border-brand-amber bg-amber-50 rounded-xl p-4 text-center text-sm mb-4">
-          ກຳນົດມາເຮັດສັນຍາພາຍໃນວັນທີ <b className="text-base">{fdate(d.contract_due_date)}</b><br />
-          <span className="text-xs text-slate-500">ກາຍກຳນົດໂດຍບໍ່ແຈ້ງເຫດຜົນ ບໍລິສັດສະຫງວນສິດພິຈາລະນາການຈອງຄືນ</span>
-        </div>
-      </>)}
 
       {type === "handover" && (<>
         <Row l="ເລກສັນຍາ" v={d.contracts?.contract_no} />
