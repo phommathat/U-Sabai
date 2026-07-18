@@ -85,6 +85,7 @@ function Contracts() {
       sign_date: form.sign_date, pay_type: form.pay_type,
       list_price: num(form.list_price), discount: form.discount || 0, sale_price: num(form.sale_price),
       currency: form.currency, booking_fee: form.booking_fee || 0, down_payment: form.down_payment || 0,
+      n_deeds: num(form.n_deeds) || 1,
       n_installments: num(form.n_installments), installment_period_months: form.installment_period_months || 1,
       installment_amt: num(form.installment_amt), first_due_date: num(form.first_due_date),
       cash_pay1: num(form.cash_pay1), cash_pay2: num(form.cash_pay2),
@@ -187,6 +188,7 @@ function Contracts() {
               </select>
             </Field>
             <Field label="ເງິນມື້ຈອງ (ຖ້າມີ — ຄີສະເພາະທີ່ຮັບແລ້ວ)"><input className="inp" type="number" value={form.booking_fee || ""} onChange={(e) => setForm({ ...form, booking_fee: e.target.value })} /></Field>
+            <Field label="ຈຳນວນໃບຕາດິນ (ຕອນ)"><input className="inp" type="number" value={form.n_deeds ?? ""} placeholder="1" onChange={(e) => setForm({ ...form, n_deeds: e.target.value })} /></Field>
             <Field label="ປະເພດການຊຳລະ *">
               <select className="inp" value={form.pay_type} onChange={(e) => setForm({ ...form, pay_type: e.target.value })}>
                 <option value="installment">ຜ່ອນເປັນງວດ</option>
