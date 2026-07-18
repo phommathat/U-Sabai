@@ -14,6 +14,41 @@ export const toLAK = (n, cur, fx = FX_DEFAULT) => Number(n || 0) * (fx[cur] ?? 1
 export const fmtMoney = (n, cur = "LAK") =>
   cur === "LAK" ? fmtM(n) + " ₭" : fmt(n, cur);
 
+// ---- ຕົວໜັງສືເງິນ (ພາສາລາວ) ສຳລັບ ສັນຍາ/ໃບມັດຈຳ ----
+const LAO_DIGIT = ["ສູນ", "ໜຶ່ງ", "ສອງ", "ສາມ", "ສີ່", "ຫ້າ", "ຫົກ", "ເຈັດ", "ແປດ", "ເກົ້າ"];
+const LAO_POS = ["", "ສິບ", "ຮ້ອຍ", "ພັນ", "ໝື່ນ", "ແສນ"];
+const CUR_WORD = { LAK: "ກີບ", THB: "ບາດ", USD: "ໂດລາ" };
+
+// ຈຳນວນເຕັມ → ຄຳອ່ານພາສາລາວ (ຮອງຮັບເລກຫຼາຍລ້ານ ດ້ວຍ recursion)
+function laoInt(n) {
+  n = Math.floor(Math.abs(Number(n) || 0));
+  if (n === 0) return "ສູນ";
+  if (n >= 1e6) {
+    const hi = Math.floor(n / 1e6), lo = n % 1e6;
+    return laoInt(hi) + "ລ້ານ" + (lo ? laoInt(lo) : "");
+  }
+  const digits = String(n).split("").map(Number);
+  const len = digits.length;
+  let s = "";
+  for (let i = 0; i < len; i++) {
+    const d = digits[i], pos = len - 1 - i;
+    if (d === 0) continue;
+    if (pos === 1) s += d === 1 ? "ສິບ" : d === 2 ? "ຊາວ" : LAO_DIGIT[d] + "ສິບ";
+    else if (pos === 0) {
+      // "ເອັດ" ສະເພາະເມື່ອມີຫຼັກສິບ (ສິບເອັດ/ຊາວເອັດ); ຖ້າຫຼັກສິບເປັນ 0 → "ໜຶ່ງ" (ໜຶ່ງຮ້ອຍໜຶ່ງ)
+      const tens = len > 1 ? digits[len - 2] : 0;
+      s += d === 1 && tens !== 0 ? "ເອັດ" : LAO_DIGIT[d];
+    } else s += LAO_DIGIT[d] + LAO_POS[pos];
+  }
+  return s;
+}
+
+// (ຈຳນວນ, ສະກຸນ) → "ໜຶ່ງລ້ານ...ກີບຖ້ວນ" · ຫວ່າງ/ບໍ່ແມ່ນເລກ → ""
+export const moneyWords = (n, cur = "LAK") => {
+  if (n == null || n === "" || isNaN(Number(n))) return "";
+  return laoInt(Math.round(Number(n))) + (CUR_WORD[cur] || "ກີບ") + "ຖ້ວນ";
+};
+
 export const fdate = (s) => {
   if (!s) return "—";
   const d = new Date(s);
