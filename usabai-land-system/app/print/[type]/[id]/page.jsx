@@ -2,14 +2,20 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { fmt, fdate, PAY_TYPE } from "@/lib/fmt";
+import { fmt, fdate, PAY_TYPE, moneyWords } from "@/lib/fmt";
 
 const TITLES = {
   receipt: "ໃບຮັບເງິນ / RECEIPT",
   booking: "ໃບຈອງດິນ / LAND BOOKING SLIP",
   handover: "ໃບມອບ-ຮັບໃບຕາດິນ / TITLE DEED HANDOVER",
-  contract: "ຂໍ້ມູນສັນຍາຊື້-ຂາຍດິນ / LAND SALE CONTRACT SUMMARY",
+  contract: "ສັນຍາຊື້-ຂາຍດິນ",
+  deposit: "ໃບສັນຍາມັດຈໍາເງິນຄ່າດິນ",
 };
+
+const CUSTOMER_COLS = "full_name, first_name, last_name, tel, age, nationality, occupation, village, district, province";
+
+// ທີ່ຢູ່ບໍລິສັດ (ຜູ້ຂາຍ) — ຄົງທີ່ໃນທຸກເອກະສານ
+const COMPANY = { village: "ໂພນຕ້ອງຈອມມະນີ", district: "ຈັນທະບູລີ", province: "ນະຄອນຫຼວງວຽງຈັນ" };
 
 const Row = ({ l, v }) => (
   <div className="flex justify-between border-b border-dashed border-slate-300 py-2 text-[13.5px]">
@@ -17,9 +23,33 @@ const Row = ({ l, v }) => (
   </div>
 );
 
+// ຊ່ອງຈຸດໆ ຕາມແບບຟອມທາງການ — ຫວ່າງ = ປະໄວ້ຂຽນມື
+const Dot = ({ v, w = "auto" }) => (
+  <span className="border-b border-dotted border-slate-500 px-2 inline-block text-center font-semibold" style={{ minWidth: w }}>{v ?? ""}</span>
+);
+
+// ຫົວເອກະສານທາງການ ສປປ ລາວ + ເລກທີ/ວັນທີ
+const LaoHeader = ({ no, date }) => {
+  const dd = date ? fdate(date).split("/") : ["", "", ""];
+  return (
+    <>
+      <div className="text-center">
+        <div className="font-bold">ສາທາລະນະລັດ ປະຊາທິປະໄຕ ປະຊາຊົນລາວ</div>
+        <div className="font-bold">ສັນຕິພາບ ເອກະລາດ ປະຊາທິປະໄຕ ເອກະພາບ ວັດທະນະຖາວອນ</div>
+        <div>--------==00==--------</div>
+      </div>
+      <div className="text-right text-[13px] mt-1">
+        <div><b>No:</b> <Dot v={no} w="120px" /></div>
+        <div className="mt-1">ວັນທີ <Dot v={dd[0]} w="34px" />/<Dot v={dd[1]} w="34px" />/<Dot v={dd[2]} w="52px" /></div>
+      </div>
+    </>
+  );
+};
+
 export default function PrintPage() {
   const { type, id } = useParams();
   const [d, setD] = useState(null);
+  const [seller, setSeller] = useState(null); // ຜູ້ຂາຍ = profile ຜູ້ໃຊ້ທີ່ login
   const [rem, setRem] = useState(null); // ຍອດເຫຼືອຫຼັງການຊຳລະຄັ້ງນີ້ (ໃບມອບຮັບເງິນ)
   const [err, setErr] = useState("");
 
@@ -27,15 +57,20 @@ export default function PrintPage() {
     (async () => {
       const { data: s } = await supabase.auth.getSession();
       if (!s.session) { setErr("ກະລຸນາ login ກ່ອນ ແລ້ວເປີດໜ້ານີ້ໃໝ່"); return; }
+      // ຜູ້ຂາຍ: ດຶງຈາກ account ຜູ້ໃຊ້ລະບົບ (profiles)
+      supabase.from("profiles").select("full_name, position, tel, village, district, province")
+        .eq("id", s.session.user.id).maybeSingle().then(({ data: p }) => setSeller(p || {}));
       let q;
       if (type === "receipt")
         q = supabase.from("payments").select("*, installments(seq), contracts(contract_no, currency, sale_price, customers(full_name, first_name, last_name, tel, village, district, province), lots(code, size_sqm), projects(name, village, district, province))").eq("id", id).single();
       else if (type === "booking")
         q = supabase.from("bookings").select("*, customers(full_name, tel, village, district), lots(code, size_sqm, list_price, currency), projects(name)").eq("id", id).single();
+      else if (type === "deposit")
+        q = supabase.from("bookings").select(`*, customers(${CUSTOMER_COLS}), lots(code, size_sqm, list_price, currency), projects(name, village, district, province)`).eq("id", id).single();
       else if (type === "handover")
         q = supabase.from("title_deeds").select("*, contracts(contract_no, customers(full_name, tel), lots(code, size_sqm), projects(name))").eq("id", id).single();
       else
-        q = supabase.from("contracts").select("*, customers(full_name, tel, village, district), lots(code, size_sqm), projects(name), installments(seq, due_date, amount_due)").eq("id", id).single();
+        q = supabase.from("contracts").select(`*, customers(${CUSTOMER_COLS}), lots(code, size_sqm), projects(name, village, district, province), installments(seq, due_date, amount_due)`).eq("id", id).single();
       const { data, error } = await q;
       if (error) { setErr(error.message); return; }
       setD(data);
@@ -60,6 +95,217 @@ export default function PrintPage() {
   if (!d) return <div className="p-10 text-center text-slate-400">ກຳລັງໂຫຼດ...</div>;
 
   const today = fdate(new Date().toISOString());
+  // ແຖວ "ຜູ້ຂາຍ" — ຊື່+ທີ່ຢູ່ ຈາກ profile ຜູ້ໃຊ້ (ຫວ່າງ = ຈຸດໆໃຫ້ຂຽນມື)
+  const SellerLine = () => (
+    <div>
+      <b>ຜູ້ຂາຍ:</b> <Dot v={seller?.full_name} w="220px" />, ທີ່ຢູ່ບໍລິສັດ
+      ບ້ານ <Dot v={COMPANY.village} w="150px" />,
+      ເມືອງ <Dot v={COMPANY.district} w="140px" />,
+      ແຂວງ <Dot v={COMPANY.province} w="150px" />.
+    </div>
+  );
+  const ProjectLine = ({ pr }) => (
+    <div>
+      ເຊິ່ງເປັນເຈົ້າຂອງໂຄງການ: ຈັດສັນທີ່ດິນເພື່ອທີ່ຢູ່ອາໄສ ({pr?.name}),
+      ບ້ານ <Dot v={pr?.village} w="150px" />,
+      ເມືອງ <Dot v={pr?.district} w="140px" />,
+      ແຂວງ <Dot v={pr?.province} w="150px" />.
+    </div>
+  );
+  // ຂໍ້ມູນຜູ້ຊື້ inline: ທ່ານ ... ອາຍຸ ... ສັນຊາດ ... ອາຊີບ ... ບ້ານ ... ເມືອງ ... ແຂວງ ... ໂທ ...
+  const BuyerInline = ({ cu }) => (
+    <>
+      ທ່ານ <Dot v={cu?.full_name} w="180px" /> ອາຍຸ <Dot v={cu?.age} w="40px" /> ປີ,
+      ສັນຊາດ <Dot v={cu?.nationality} w="60px" /> ອາຊີບ <Dot v={cu?.occupation} w="110px" />
+      {" "}ບ້ານຢູ່ປະຈຸບັນ <Dot v={cu?.village} w="120px" /> ເມືອງ <Dot v={cu?.district} w="110px" />
+      {" "}ແຂວງ <Dot v={cu?.province} w="110px" /> ເບີໂທລະສັບ <Dot v={cu?.tel} w="110px" /> (ຜູ້ຊື້)
+    </>
+  );
+
+  // ---------- ສັນຍາຊື້-ຂາຍດິນ (ສະບັບເຕັມ ຕາມ template ບໍລິສັດ) ----------
+  if (type === "contract") {
+    const cu = d.customers || {}, lo = d.lots || {}, pr = d.projects || {};
+    const isCash = d.pay_type === "cash";
+    const pay1 = isCash ? Number(d.cash_pay1 || 0) : Number(d.down_payment || 0);
+    const rest = Number(d.sale_price || 0) - pay1;
+    const months = Number(d.n_installments || 0) * Number(d.installment_period_months || 1);
+    const ins = (d.installments || []).filter((i) => i.seq > 0).sort((a, b) => a.seq - b.seq);
+    const first = ins[0], last = ins[ins.length - 1];
+    const payDay = first?.due_date ? new Date(first.due_date).getDate() : null;
+    const Chk = ({ on }) => (
+      <span className="w-5 h-5 border-2 border-black inline-flex items-center justify-center align-middle mr-1 text-[13px] font-bold">{on ? "✓" : ""}</span>
+    );
+    return (
+      <div className="contract-sheet max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[13.5px] leading-[1.8] text-justify">
+        <style>{`
+          @media print {
+            @page { size: A4 portrait; margin: 7mm; }
+            .contract-sheet { font-size: 10px !important; line-height: 1.32 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
+            .contract-sheet .c-title { font-size: 15px !important; margin: 4px 0 !important; }
+            .contract-sheet .c-note { font-size: 9px !important; }
+            .contract-sheet .sig-area { margin-top: 8px !important; }
+            .contract-sheet .sig-gap { margin-top: 40px !important; }
+          }
+        `}</style>
+        <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
+        <LaoHeader no={d.contract_no} date={d.sign_date} />
+        <div className="c-title text-center text-xl font-bold my-3 underline underline-offset-4">ສັນຍາຊື້-ຂາຍດິນ</div>
+
+        <div className="space-y-1">
+          <SellerLine />
+          <ProjectLine pr={pr} />
+          <div>
+            ໄດ້ຕົກລົງຂາຍດິນຈັດສັນລ໋ອກທີ <Dot v={lo.code} w="80px" /> ຂະໜາດ <Dot w="90px" />
+            {" "}ເນື້ອທີ່ດິນ <Dot v={lo.size_sqm ? Number(lo.size_sqm) + " ຕລມ" : null} w="90px" />
+            {" "}ເຮັດໃບຕາດິນຈຳນວນ <Dot v={d.n_deeds ?? 1} w="40px" /> ຕອນ ໃຫ້ແກ່ <BuyerInline cu={cu} />
+          </div>
+          <div className="c-note text-[12.5px]">
+            <b>ໝາຍເຫດ:</b> ເນື້ອທີ່ດິນຂ້າງເທິງແມ່ນເນື້ອທີ່ຄາດຄະເນເບື້ອງຕົ້ນ, ເນື້ອທີ່ຕົວຈິງແມ່ນອີງຕາມເນື້ອທີ່ທີ່ລະບຸໃນໃບຕາດິນ,
+            ຖ້າຫາກວ່າເນື້ອທີ່ຕົວຈິງຫາກໜ້ອຍກວ່າເນື້ອທີ່ຄາດຄະເນເບື້ອງຕົ້ນ, ຜູ້ຂາຍແມ່ນຍິນດີຄືນເງິນໃຫ້ຜູ້ຊື້ຕາມອັດຕາຄິດໄລ່ຕົວຈິງ
+            ແລະ ຖ້າຫາກວ່າເນື້ອທີ່ຕົວຈິງຫາກຫຼາຍກວ່າເນື້ອທີ່ຄາດຄະເນ, ຜູ້ຊື້ຕ້ອງຍິນດີຈ່າຍເງິນເພີ່ມຕາມອັດຕາຄິດໄລ່ຕົວຈິງ.
+          </div>
+        </div>
+
+        <div className="font-bold mt-2">ທັງສອງຝ່າຍຕົກລົງເຫັນດີຮ່ວມກັນໃນເງື່ອນໄຂການຊື້-ຂາຍ ແລະ ຂໍ້ກຳນົດດັ່ງລຸ່ມນີ້:</div>
+        <div className="space-y-1 mt-1">
+          <div>1. ຜູ້ຂາຍໄດ້ຕົກລົງເຫັນດີຂາຍດິນ ໃນລາຄາ <Dot v={fmt(d.sale_price, d.currency)} w="160px" /> (<Dot v={moneyWords(d.sale_price, d.currency)} w="220px" />)</div>
+          <div>
+            2. ຜູ້ຊື້ໄດ້ຕົກລົງຈ່າຍ: ງວດທີ 1: ຊຳລະຈຳນວນເງິນ <Dot v={pay1 ? fmt(pay1, d.currency) : null} w="150px" />
+            {" "}(<Dot v={moneyWords(pay1, d.currency)} w="200px" />) ໃນມື້ເຮັດສັນຍາຊື້ຂາຍ<br />
+            ງວດທີ່ເຫຼືອຈຳນວນ <Dot v={rest > 0 ? fmt(rest, d.currency) : null} w="150px" /> (<Dot v={moneyWords(rest > 0 ? rest : 0, d.currency)} w="200px" />)
+          </div>
+          <div className="pl-4">
+            <Chk on={isCash} /> ຈ່າຍສົດພາຍຫຼັງແລ່ນໃບຕາດິນຂອບທອງເປັນຂອງລູກຄ້າແລ້ວ (ພາຍໃນ 30 ວັນ)
+          </div>
+          <div className="pl-4">
+            <Chk on={!isCash && d.pay_type === "installment"} /> ຈ່າຍຜ່ອນກຳນົດເວລາຜ່ອນ <Dot v={months || null} w="46px" /> ເດືອນ,
+            ດອກເບ້ຍ <Dot v={0} w="40px" /> % ຈຳນວນເງິນເດືອນລະ <Dot v={d.installment_amt ? fmt(d.installment_amt, d.currency) : null} w="130px" />
+            {" "}ຈ່າຍທຸກວັນທີ <Dot v={payDay} w="40px" /> ຂອງແຕ່ລະເດືອນ,
+            ເລີ່ມຈ່າຍວັນທີ <Dot v={first ? fdate(first.due_date) : null} w="90px" /> ຈົນເຖິງວັນທີ <Dot v={last ? fdate(last.due_date) : null} w="90px" />
+            {" "}ຈົນຄົບຈຳນວນ <Dot v={rest > 0 ? fmt(rest, d.currency) : null} w="130px" />
+          </div>
+          <div className="pl-4">
+            <Chk on={d.pay_type !== "cash" && d.pay_type !== "installment"} /> ຈ່າຍຮູບແບບອື່ນ <Dot v={d.pay_type !== "cash" && d.pay_type !== "installment" ? PAY_TYPE[d.pay_type] : null} w="300px" />
+          </div>
+          <div>4. ຮູບແບບການຊຳລະເງິນແມ່ນສາມາດເຂົ້າມາຊຳລະກັບຜູ້ຂາຍໂດຍກົງ, ຊຳລະໂດຍໂອນຈ່າຍຜ່ານທະນາຄານ ຫຼື ຜ່ານລະບົບ BCEL One</div>
+          <div>5. ຜູ້ຂາຍຈະເປັນຜູ້ຮັບຜິດຊອບແລ່ນມອບໂອນກຳມະສິດທີ່ດິນໃຫ້ກັບຜູ້ຊື້ ແລະ ເກັບຮັກສາໃບຕາດິນສະບັບແທ້ໄວ້ກັບຜູ້ຂາຍຈົນກວ່າລູກຄ້າຈະຊຳລະຄ່າດິນໝົດ.</div>
+          <div>6. ຫາກຝ່າຍໃດຝ່າຍໜຶ່ງເຈຕະນາຜິດຕໍ່ສັນຍາການຊື້-ຂາຍສະບັບນີ້ ຜູ້ກ່ຽວຂໍຮັບຜິດຊອບຂໍ້ກຳນົດປັບໄໝດັ່ງນີ້:</div>
+          <div className="pl-4">
+            <b>ຄວາມຮັບຜິດຊອບຂອງຜູ້ຂາຍ:</b> ຜູ້ຂາຍຂໍຢັ້ງຢືນວ່າ ເອກະສານກຳມະສິດນຳໃຊ້ທີ່ດິນຂ້າງເທິງແມ່ນເປັນຂອງຜູ້ຂາຍແທ້,
+            ຖ້າຫາກມີບັນຫາຈົນເປັນເຫດໃຫ້ບໍ່ສາມາດມອບໂອນກຳມະສິດເປັນຂອງຜູ້ຊື້ໄດ້, ຜູ້ຂາຍຂໍຍອມຮັບຜິດຊອບທົດແທນຄ່າເສຍຫາຍ
+            ແລະ ສົ່ງຄືນເງິນທັງໝົດ 100% ທີ່ລູກຄ້າຊຳລະຜ່ານມາ.
+          </div>
+          <div className="pl-4"><b>ຄວາມຮັບຜິດຊອບຂອງລູກຄ້າ</b></div>
+          <div className="pl-4">* ກໍລະນີລູກຄ້າຈ່າຍສົດ:</div>
+          <div className="pl-8">
+            - ພາຍຫຼັງທີ່ເຊັນມອບໂອນກຳມະສິດ ແລະ ແລ່ນໃບຕາດິນຂອບທອງສຳເລັດ ຜູ້ຊື້ຈະຕ້ອງຊຳລະເງິນສ່ວນທີ່ເຫຼືອທັງໝົດໃຫ້ກັບຜູ້ຂາຍ,
+            ຜູ້ຂາຍຈຶ່ງຈະມອບໃບຕາດິນຂອບທອງໃຫ້ກັບຜູ້ຊື້.<br />
+            - ໃນກໍລະນີທີ່ຜູ້ຊື້ ຫາກບໍ່ມາຊຳລະເງິນສ່ວນທີ່ເຫຼືອ ຫຼັງຈາກທີ່ແລ່ນໃບຕາດິນຂອບທອງສຳເລັດ ພາຍໃນ 01 ເດືອນ
+            ຜູ້ຂາຍມີສິດຍົກເລີກໃບຕາດິນຂອບທອງ ແລະ ຖືວ່າຜູ້ຊື້ສະຫຼະສິດໃນເງິນຈຳນວນທີ່ໄດ້ຊຳລະໃນງວດທີ 1.
+          </div>
+          <div className="pl-4">* ກໍລະນີລູກຄ້າຈ່າຍຜ່ອນ:</div>
+          <div className="pl-8">
+            - ກໍລະນີລູກຄ້າຈ່າຍຜ່ອນກາຍກຳນົດເວລາທີ່ຕົກລົງກັນໄວ້ (<Dot v={months || null} w="40px" /> ເດືອນ) ທາງຜູ້ຂາຍຈະຄິດໄລ່ດອກເບ້ຍ 1.5% ຕໍ່ເດືອນ
+            ເຊິ່ງຈະຄິດໄລ່ຈາກຍອດທີ່ຄ້າງຈ່າຍຕົວຈິງ.<br />
+            - ກໍລະນີທີ່ຜູ້ຊື້ ຄ້າງການຜ່ອນຈ່າຍ ກາຍວັນເວລາທີ່ກຳນົດໄວ້ 3 ເດືອນ ຫຼື ຈ່າຍຊ້າຄົບ 3 ເດືອນ ຜູ້ຂາຍມີສິດຍົກເລີກສັນຍາ,
+            ພ້ອມທັງໂອນກຳມະສິດເປັນຂອງຜູ້ຂາຍຄືນ ແລະ ຖືວ່າຜູ້ຊື້ສະຫຼະສິດເງິນຈຳນວນທີ່ໄດ້ຊຳລະຜ່ານມາ.<br />
+            - ກໍລະນີທີ່ຜູ້ຊື້ຫາກຈ່າຍຊ້າ ການ 3 ຄັ້ງ (ໂດຍຈະນັບເປັນ 1 ຄັ້ງ ຖ້າຫາກຜູ້ຊື້ຫາກຈ່າຍຊ້າເກີນ 2 ອາທິດ ຕາມວັນທີກຳນົດໄວ້ໃນຂໍ້ 2 ຂອງສັນຍາ)
+            ຜູ້ຂາຍມີສິດຍົກເລີກສັນຍາ, ພ້ອມທັງໂອນກຳມະສິດທີ່ດິນເປັນຂອງຜູ້ຂາຍຄືນ ແລະ ຖືວ່າຜູ້ຊື້ສະຫຼະສິດເງິນຈຳນວນທີ່ໄດ້ຊຳລະຜ່ານມາ.
+          </div>
+          <div>
+            ສັນຍາສະບັບນີ້ໄດ້ເຮັດຂຶ້ນ 2 ສະບັບ, ເກັບມ້ຽນໄວ້ຝ່າຍລະ 1 ສະບັບ, ທັງສອງຝ່າຍໄດ້ອ່ານ ແລະ ເຂົ້າໃຈເນື້ອໃນຂອງສັນຍາສະບັບນີ້ແລ້ວເປັນຢ່າງດີ,
+            ຈຶ່ງໄດ້ຍິນຍອມພ້ອມກັນລົງລາຍເຊັນໄວ້ເປັນຫຼັກຖານ, ຖ້າຫາກຝ່າຍໃດລະເມີດແມ່ນຈະຖືກປັບໄໝເປັນຈຳນວນເງິນ 20,000,000 ກີບ (ຊາວລ້ານກີບ)
+            ແລະ ຖືກດຳເນີນຄະດີຕາມກົດໝາຍຂອງ ສປປ ລາວ.
+          </div>
+        </div>
+
+        <div className="sig-area grid grid-cols-3 gap-6 mt-8 text-center font-bold">
+          <div>ລາຍເຊັນຜູ້ຊື້<div className="sig-gap mt-20 font-normal text-[12px]">{cu.full_name}</div></div>
+          <div>ລາຍເຊັນຜູ້ຂາຍ<div className="sig-gap mt-20 font-normal text-[12px]">{seller?.full_name}</div></div>
+          <div>ນາຍບ້ານ, ບ້ານ <Dot w="110px" /><div className="sig-gap mt-20"></div></div>
+        </div>
+        <div className="grid grid-cols-2 gap-10 mt-6 text-[13px]">
+          <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (1) <Dot w="170px" /></div>
+          <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (2) <Dot w="170px" /></div>
+        </div>
+
+        <div className="no-print text-center text-[11px] text-slate-400 mt-8">
+          ອອກໂດຍລະບົບ U-Sabai Land System · ວັນທີພິມ {today}
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- ໃບສັນຍາມັດຈຳເງິນຄ່າດິນ (ຕາມ template ບໍລິສັດ) ----------
+  if (type === "deposit") {
+    const cu = d.customers || {}, lo = d.lots || {}, pr = d.projects || {};
+    const cur = d.currency || lo.currency || "LAK";
+    const dep = [
+      { amt: d.deposit_amount, date: d.deposit1_date || d.booking_date, label: "ງວດທີ 1: ຜູ້ຊື້ໄດ້ຕົກລົງຈ່າຍເງິນມັດຈຳ" },
+      { amt: d.deposit2_amount, date: d.deposit2_date, label: "ງວດທີ 2: ຜູ້ຊື້ນັດຈ່າຍຄັ້ງຕໍ່ໄປ" },
+      { amt: d.deposit3_amount, date: d.deposit3_date, label: "ງວດທີ 3: ຜູ້ຊື້ນັດຈ່າຍຄັ້ງຕໍ່ໄປ" },
+    ];
+    return (
+      <div className="max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[13.5px] leading-[1.9] text-justify">
+        <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
+        <LaoHeader no={d.booking_no} date={d.booking_date} />
+        <div className="text-center text-xl font-bold my-3 underline underline-offset-4">ໃບສັນຍາມັດຈຳເງິນຄ່າດິນ</div>
+
+        <div className="space-y-1">
+          <SellerLine />
+          <ProjectLine pr={pr} />
+          <div>
+            ຮັບເງິນມັດຈຳຄ່າດິນຈາກ <BuyerInline cu={cu} /> ເຊິ່ງໄດ້ຕົກລົງຂາຍດິນຈັດສັນລ໋ອກທີ <Dot v={lo.code} w="80px" />
+            {" "}ຂະໜາດ <Dot w="90px" /> ເນື້ອທີ່ດິນ <Dot v={lo.size_sqm ? Number(lo.size_sqm) + " ຕລມ" : null} w="90px" />
+            {" "}ມູນຄ່າ <Dot v={lo.list_price ? fmt(lo.list_price, lo.currency) : null} w="140px" />
+            {" "}(<Dot v={moneyWords(lo.list_price, lo.currency)} w="200px" />)
+          </div>
+        </div>
+
+        <div className="font-bold mt-2">ທັງສອງຝ່າຍຕົກລົງເຫັນດີພາຍໃຕ້ຂໍ້ກຳນົດດັ່ງລຸ່ມນີ້:</div>
+        <div className="mt-1">
+          <div className="font-bold">ມາດຕາ 1: ວ່າດ້ວຍການມັດຈຳເງິນຄ່າດິນ</div>
+          {dep.map((g, i) => (
+            <div key={i} className="pl-4">
+              1.{i + 1} {g.label} ຈຳນວນ <Dot v={g.amt ? fmt(g.amt, cur) : null} w="170px" /> ວັນທີ <Dot v={g.date ? fdate(g.date) : null} w="110px" />
+            </div>
+          ))}
+          <div className="pl-4">ໝາຍເຫດ: <Dot v={d.deposit_note || d.note} w="440px" /></div>
+
+          <div className="font-bold mt-2">ມາດຕາ 2: ວ່າດ້ວຍໄລຍະເວລາໃນການມັດຈຳດິນ</div>
+          <div className="pl-4">2.1 ສັນຍາມັດຈຳສະບັບນີ້ ນຳໃຊ້ໄດ້ພາຍໃນ 07 ວັນ ນັບແຕ່ມື້ລົງລາຍເຊັນ ແລະ ຮັບເງິນມັດຈຳເປັນຕົ້ນໄປ.</div>
+          <div className="pl-4">2.2 ຜູ້ຂາຍບໍ່ມີສິດນຳດິນໄປຂາຍຕໍ່ໃຫ້ບຸກຄົນອື່ນ ແລະ ຜູ້ຊື້ກໍ່ບໍ່ສາມາດຖອນເງິນມັດຈຳ ແລະ ນຳດິນໄປຂາຍຕໍ່.</div>
+          <div className="pl-4">
+            2.3 ໃນກໍລະນີທີ່ຜູ້ຊື້ ຫາກບໍ່ມາຊຳລະເງິນຕາມວັນເວລາທີ່ໄດ້ລະບຸໄວ້ໃນມາດຕາ 02 ຖືວ່າຜູ້ຊື້ສະຫຼະສິດ
+            ແລະ ຜູ້ຂາຍກໍ່ສາມາດນຳເອົາດິນຕອນດັ່ງກ່າວໄປຂາຍຕໍ່ໃຫ້ບຸກຄົນອື່ນໄດ້ ແລະ ຖືວ່າສັນຍາສະບັບນີ້ເປັນໂມຄະ
+            ແລະ ຜູ້ຂາຍກໍ່ຈະບໍ່ສົ່ງເງິນມັດຈຳຄືນ.
+          </div>
+          <div className="pl-4 text-[12.5px]">
+            <b>ໝາຍເຫດ:</b> ໃນກໍລະນີທີ່ຜູ້ຊື້ຫາກມີການປ່ຽນແປງ, ບໍ່ຊື້ດິນ, ຜູ້ຊື້ຕ້ອງໄດ້ແຈ້ງພາຍໃນ 07 ວັນ ຫຼັງຈາກທີ່ຈ່າຍເງິນມັດຈຳ
+            ຫຼື ແຈ້ງກ່ອນລ່ວງໜ້າມື້ນັດຊຳລະເງິນ, ຜູ້ຂາຍຈຶ່ງຈະຄືນເງິນມັດຈຳໃຫ້ 50% ຂອງມູນຄ່າມັດຈຳ
+          </div>
+
+          <div className="mt-2">
+            <b>ມາດຕາ 3:</b> ສັນຍາສະບັບນີ້ໄດ້ເຮັດຂຶ້ນ 2 ສະບັບ, ເກັບມ້ຽນໄວ້ຝ່າຍລະ 1 ສະບັບ, ທັງສອງຝ່າຍໄດ້ອ່ານ ແລະ ເຂົ້າໃຈເນື້ອໃນຂອງສັນຍາສະບັບນີ້ແລ້ວເປັນຢ່າງດີ,
+            ຈຶ່ງໄດ້ຍິນຍອມພ້ອມກັນລົງລາຍເຊັນໄວ້ເປັນຫຼັກຖານ, ຖ້າຫາກຝ່າຍໃດລະເມີດແມ່ນຈະຖືກປັບໄໝ ແລະ ຖືກດຳເນີນຄະດີຕາມກົດໝາຍຂອງ ສປປ ລາວ.
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-10 mt-8 text-center font-bold">
+          <div>ລາຍເຊັນຜູ້ຊື້<div className="mt-20 font-normal text-[12px]">{cu.full_name}</div></div>
+          <div>ລາຍເຊັນຜູ້ຂາຍ<div className="mt-20 font-normal text-[12px]">{seller?.full_name}</div></div>
+        </div>
+        <div className="grid grid-cols-2 gap-10 mt-6 text-[13px]">
+          <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (1) <Dot w="170px" /></div>
+          <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (2) <Dot w="170px" /></div>
+        </div>
+
+        <div className="no-print text-center text-[11px] text-slate-400 mt-8">
+          ອອກໂດຍລະບົບ U-Sabai Land System · ວັນທີພິມ {today}
+        </div>
+      </div>
+    );
+  }
 
   // ---------- ໃບມອບຮັບເງິນ (layout ທາງການ ຕາມ template ບໍລິສັດ) ----------
   if (type === "receipt") {
@@ -71,9 +317,6 @@ export default function PrintPage() {
     const detail = d.installments?.seq != null
       ? (d.installments.seq === 0 ? "ເງິນດາວ/ມັດຈຳ" : `ຄ່າງວດ ທີ ${d.installments.seq}`)
       : (d.note || "ຊຳລະຄ່າດິນ");
-    const Dot = ({ v, w = "auto" }) => (
-      <span className="border-b border-dotted border-slate-500 px-2 inline-block text-center font-semibold" style={{ minWidth: w }}>{v ?? ""}</span>
-    );
     return (
       <div className="max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[14px] leading-relaxed">
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
@@ -100,7 +343,12 @@ export default function PrintPage() {
         </div>
 
         <div className="space-y-2">
-          <div><b>ຜູ້ຂາຍ:</b> ນາງ ສັບພະສະຫວ່າງ ພອນສະຫວັນ, ທີ່ຢູ່ປະຈຸບັນ ບ້ານ ໂພນຕ້ອງຈອມມະນີ, ເມືອງ ຈັນທະບູລີ, ນະຄອນຫຼວງວຽງຈັນ.</div>
+          <div>
+            <b>ຜູ້ຂາຍ:</b> <Dot v={seller?.full_name} w="200px" />, ທີ່ຢູ່ບໍລິສັດ
+            ບ້ານ <Dot v={COMPANY.village} w="140px" />,
+            ເມືອງ <Dot v={COMPANY.district} w="130px" />,
+            ແຂວງ <Dot v={COMPANY.province} w="140px" />.
+          </div>
           <div>
             ຊື່ຜູ້ຊື້: <Dot v={cu.full_name} w="220px" />
             ລະຫັດດິນ: <Dot v={c.lots?.code} w="90px" />
@@ -201,33 +449,6 @@ export default function PrintPage() {
           ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າສ໌ ໄດ້ສົ່ງມອບໃບຕາດິນສະບັບແທ້ ຕາມລາຍລະອຽດຂ້າງເທິງ
           ໃຫ້ແກ່ຜູ້ຊື້ຄົບຖ້ວນແລ້ວ ແລະ ຜູ້ຊື້ໄດ້ກວດກາຮັບເອົາຮຽບຮ້ອຍແລ້ວ.
         </div>
-      </>)}
-
-      {type === "contract" && (<>
-        <Row l="ເລກສັນຍາ" v={d.contract_no} />
-        <Row l="ວັນທີເຊັນ" v={fdate(d.sign_date)} />
-        <Row l="ໂຄງການ / ຕອນດິນ" v={`${d.projects?.name} / ${d.lots?.code} (${Number(d.lots?.size_sqm)} ຕລມ)`} />
-        <Row l="ຜູ້ຊື້" v={`${d.customers?.full_name} (${d.customers?.tel || "—"})`} />
-        <Row l="ປະເພດການຊຳລະ" v={PAY_TYPE[d.pay_type]} />
-        <Row l="ລາຄາຕັ້ງ / ສ່ວນຫຼຸດ" v={`${fmt(d.list_price, d.currency)} / ${fmt(d.discount, d.currency)}`} />
-        <Row l="ລາຄາຂາຍຕົວຈິງ" v={<span className="text-lg">{fmt(d.sale_price, d.currency)}</span>} />
-        {d.pay_type === "installment" && (<>
-          <Row l="ເງິນດາວ" v={fmt(d.down_payment, d.currency)} />
-          <Row l="ງວດ" v={`${d.n_installments} ງວດ · ທຸກ ${d.installment_period_months} ເດືອນ · ${fmt(d.installment_amt, d.currency)}/ງວດ`} />
-        </>)}
-        {d.installments?.length > 0 && (
-          <div className="mt-4">
-            <b className="text-navy text-sm">ຕາຕະລາງງວດ ({d.installments.length} ງວດ)</b>
-            <div className="grid grid-cols-3 gap-x-4 text-[11.5px] mt-2">
-              {d.installments.sort((a, b) => a.seq - b.seq).map((i) => (
-                <div key={i.seq} className="flex justify-between border-b border-dotted py-0.5">
-                  <span>{i.seq === 0 ? "ດາວ" : "ງວດ " + i.seq} · {fdate(i.due_date)}</span>
-                  <span>{Number(i.amount_due).toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </>)}
 
       <div className="grid grid-cols-2 gap-10 mt-12 text-center text-[13px]">
