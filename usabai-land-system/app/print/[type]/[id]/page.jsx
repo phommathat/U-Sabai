@@ -252,10 +252,13 @@ export default function PrintPage() {
       { amt: d.deposit3_amount, date: d.deposit3_date, label: "ງວດທີ 3: ຜູ້ຊື້ນັດຈ່າຍຄັ້ງຕໍ່ໄປ" },
     ];
     return (
-      <div className="max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[13.5px] leading-[1.9] text-justify">
+      <div className="max-w-[860px] mx-auto p-8 bg-white min-h-screen text-black text-[15.5px] leading-[2.05] text-justify">
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
-        <LaoHeader no={d.booking_no} date={d.booking_date} />
-        <div className="text-center text-xl font-bold my-3 underline underline-offset-4">ໃບສັນຍາມັດຈຳເງິນຄ່າດິນ</div>
+        <div className="relative">
+          <img src="/logo-mark.png" alt="U-Sabai" className="absolute left-0 top-0 w-20 h-20 object-contain" />
+          <LaoHeader no={d.booking_no} date={d.booking_date} />
+        </div>
+        <div className="text-center text-2xl font-bold my-3 underline underline-offset-4">ໃບສັນຍາມັດຈຳເງິນຄ່າດິນ</div>
 
         <div className="space-y-1">
           <SellerLine />
