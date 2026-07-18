@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Shell, { useApp } from "@/components/Shell";
-import { Badge, Modal, Field, Table } from "@/components/ui";
+import { Badge, Modal, Field, Table, Pager, usePager } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { fdate } from "@/lib/fmt";
 
@@ -24,7 +24,7 @@ function Deeds() {
   const load = () =>
     projectIds.length &&
     supabase.from("v_deed_pipeline").select("*").in("project_id", projectIds)
-      .order("pct_paid", { ascending: false })
+      .order("pct_paid", { ascending: false }).limit(2000)
       .then(({ data }) => setRows(data || []));
   useEffect(() => { load(); }, [projectIds]);
 
@@ -50,6 +50,8 @@ function Deeds() {
   const counts = Object.fromEntries(STAGES.map(([k]) => [k, 0]));
   rows.forEach((r) => { counts[r.deed_id ? r.stage : "not_eligible"]++; });
 
+  const pg = usePager(rows, [projectIds]); // 50 ສັນຍາ/ໜ້າ
+
   return (
     <>
       <h2 className="text-lg font-bold text-navy mb-3">ຕິດຕາມໃບຕາດິນ</h2>
@@ -65,7 +67,7 @@ function Deeds() {
         ))}
       </div>
       <Table cols={["ສັນຍາ", "ລູກຄ້າ", "ຕອນ", "% ຊຳລະ", "ຄວາມຄືບໜ້າປັດຈຸບັນ", "ໃບຕາດິນໃໝ່", "ສົ່ງມອບ", ""]}
-        rows={rows.map((r) => [
+        rows={pg.rows.map((r) => [
           <b key="n">{r.contract_no}</b>, r.full_name, r.lot_code,
           <span key="p" className={r.deed_eligible ? "text-brand-green font-bold" : "text-slate-400"}>{r.pct_paid}%{r.deed_eligible && " ✓"}</span>,
           <Badge key="s" color={SCOLOR[r.deed_id ? r.stage : "not_eligible"]}>{SNAME[r.deed_id ? r.stage : "not_eligible"]}</Badge>,
@@ -87,6 +89,7 @@ function Deeds() {
             </span>
           ) : null,
         ])} />
+      <Pager pg={pg} unit="ສັນຍາ" />
 
       <Modal open={!!form} title="ອັບເດດຄວາມຄືບໜ້າໃບຕາດິນ" onClose={() => setForm(null)}>
         {form && (
