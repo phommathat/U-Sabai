@@ -238,6 +238,8 @@ function Customers() {
             <Field label="ຊື່"><input className="inp" value={form.first_name || ""} onChange={(e) => setForm({ ...form, first_name: e.target.value })} /></Field>
             <Field label="ນາມສະກຸນ"><input className="inp" value={form.last_name || ""} onChange={(e) => setForm({ ...form, last_name: e.target.value })} /></Field>
             <Field label="ເບີໂທ"><input className="inp" value={form.tel || ""} onChange={(e) => setForm({ ...form, tel: e.target.value })} /></Field>
+            <Field label="ອາຍຸ"><input className="inp" type="number" value={form.age ?? ""} onChange={(e) => setForm({ ...form, age: e.target.value ? Number(e.target.value) : null })} /></Field>
+            <Field label="ສັນຊາດ"><input className="inp" value={form.nationality ?? "ລາວ"} onChange={(e) => setForm({ ...form, nationality: e.target.value })} /></Field>
             <Field label="ເລກບັດປະຈຳຕົວ"><input className="inp" value={form.id_card_no || ""} onChange={(e) => setForm({ ...form, id_card_no: e.target.value })} /></Field>
             <Field label="ບ້ານ"><input className="inp" value={form.village || ""} onChange={(e) => setForm({ ...form, village: e.target.value })} /></Field>
             <Field label="ເມືອງ"><input className="inp" value={form.district || ""} onChange={(e) => setForm({ ...form, district: e.target.value })} /></Field>
