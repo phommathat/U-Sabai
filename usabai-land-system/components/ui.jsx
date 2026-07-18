@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 
 export const KPI = ({ label, value, note, warn }) => (
   <div className="card">
@@ -35,6 +36,37 @@ export const Modal = ({ open, title, onClose, children, wide }) =>
 export const Field = ({ label, children }) => (
   <div><label className="lbl">{label}</label>{children}</div>
 );
+
+// ---- ແບ່ງໜ້າ: 50 ລາຍການ/ໜ້າ (‹ ກ່ອນ · 1 … n · ຕໍ່ໄປ ›) ----
+// ໃຊ້: const pg = usePager(list, [deps ທີ່ປ່ຽນແລ້ວ reset ໜ້າ 1]); → pg.rows ໃສ່ Table, <Pager pg={pg} /> ລຸ່ມຕາຕະລາງ
+export function usePager(list, resetDeps = [], perPage = 50) {
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, resetDeps); // eslint-disable-line react-hooks/exhaustive-deps
+  const pageCount = Math.max(1, Math.ceil(list.length / perPage));
+  const cur = Math.min(page, pageCount);
+  return { rows: list.slice((cur - 1) * perPage, cur * perPage), cur, pageCount, total: list.length, setPage };
+}
+
+export const Pager = ({ pg, unit = "ລາຍການ" }) => {
+  const { cur, pageCount, total, setPage } = pg;
+  if (pageCount <= 1) return null;
+  return (
+    <div className="flex gap-1 mt-4 items-center justify-center flex-wrap">
+      <button className="btn-o !py-1 !px-3 text-xs" disabled={cur <= 1} onClick={() => setPage(cur - 1)}>‹ ກ່ອນ</button>
+      {Array.from({ length: pageCount }, (_, i) => i + 1)
+        .filter((n) => n === 1 || n === pageCount || Math.abs(n - cur) <= 2)
+        .map((n, i, arr) => (
+          <span key={n} className="flex items-center gap-1">
+            {i > 0 && arr[i - 1] !== n - 1 && <span className="text-slate-400 px-1">…</span>}
+            <button className={n === cur ? "btn-p !py-1 !px-3 text-xs" : "btn-o !py-1 !px-3 text-xs"}
+              onClick={() => setPage(n)}>{n}</button>
+          </span>
+        ))}
+      <button className="btn-o !py-1 !px-3 text-xs" disabled={cur >= pageCount} onClick={() => setPage(cur + 1)}>ຕໍ່ໄປ ›</button>
+      <span className="text-xs text-slate-500 ml-2">ໜ້າ {cur}/{pageCount} · ທັງໝົດ {total} {unit}</span>
+    </div>
+  );
+};
 
 export function Table({ cols, rows, empty = "ບໍ່ມີຂໍ້ມູນ" }) {
   return (
