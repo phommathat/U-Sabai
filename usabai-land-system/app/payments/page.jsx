@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Shell, { useApp } from "@/components/Shell";
-import { Badge, Modal, Field, Table } from "@/components/ui";
+import { Badge, Modal, Field, Table, Pager, usePager } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { fmt, fdate } from "@/lib/fmt";
 
@@ -193,6 +193,12 @@ function Payments() {
       onClick={() => setDrill(contractId)}>{name || "—"}</button>
   );
 
+  // ---- ແບ່ງໜ້າ 50 ລາຍການ/ໜ້າ (ຕໍ່ tab) — reset ໜ້າ 1 ເມື່ອປ່ຽນໂຄງການ/tab ----
+  const pgHist = usePager(hist, [projectIds, tab]);
+  const pgSoon = usePager(soonLeft, [projectIds, tab]);
+  const pgPaid = usePager(paidFull, [projectIds, tab]);
+  const pgInst = usePager(filtered, [projectIds, tab]);
+
   const TABS = [
     ["history", "ການຮັບເງິນ"],
     ["soon", `ໃກ້ຮອດກຳນົດ 6 ວັນ${soonLeft.length ? ` (${soonLeft.length})` : ""}`],
@@ -213,7 +219,7 @@ function Payments() {
       {tab === "history" && (
         <Table cols={["ຊື່ລູກຄ້າ", "ຈຳນວນເງິນ", "ຍອດຄ້າງ", "ເລກທີໃບຮັບເງິນ", "ເລກທີສັນຍາ", "ວັນທີຮັບເງິນ", "ໝາຍເຫດ", ""]}
           empty="ຍັງບໍ່ມີການຮັບເງິນ"
-          rows={hist.slice(0, 500).map((p) => [
+          rows={pgHist.rows.map((p) => [
             custBtn(p.contract_id, cmap[p.contract_id]?.customers?.full_name),
             <b key="a">{fmt(p.amount_received, p.currency)}</b>,
             remainAfter[p.id] > 0
@@ -227,11 +233,12 @@ function Payments() {
             </span>,
           ])} />
       )}
+      {tab === "history" && <Pager pg={pgHist} />}
 
       {tab === "soon" && (
         <Table cols={["ສັນຍາ", "ລູກຄ້າ", "ເບີໂທ", "ງວດ", "ຄົບກຳນົດ", "ອີກ (ວັນ)", "ຍອດຄ້າງງວດ", ""]}
           empty="ບໍ່ມີງວດຄົບກຳນົດພາຍໃນ 6 ວັນ"
-          rows={soonLeft.map((i) => [
+          rows={pgSoon.rows.map((i) => [
             i.contract_no, custBtn(i.contract_id, i.full_name), i.tel || "—",
             i.seq === 0 ? "ດາວ (ງວດ 0)" : `ງວດ ${i.seq}`, fdate(i.due_date),
             <Badge key="d" color={i.days_left <= 2 ? "red" : "amber"}>{i.days_left} ວັນ</Badge>,
@@ -239,20 +246,22 @@ function Payments() {
             <button key="r" className="btn-p !py-1 !px-3 text-xs" onClick={() => openReceive(i)}>ຮັບເງິນ</button>,
           ])} />
       )}
+      {tab === "soon" && <Pager pg={pgSoon} />}
 
       {tab === "paid100" && (
         <Table cols={["ສັນຍາ", "ລູກຄ້າ", "ເບີໂທ", "ຕອນ", "ມູນຄ່າສັນຍາ", "ຊຳລະແລ້ວ", "ໃບຕາດິນ"]}
           empty="ຍັງບໍ່ມີສັນຍາທີ່ຊຳລະຄົບ 100%"
-          rows={paidFull.map((c) => [
+          rows={pgPaid.rows.map((c) => [
             c.contract_no, custBtn(c.id, c.full_name), c.tel || "—", c.lot_code,
             fmt(c.sale_price, c.currency), <b key="p" className="text-brand-green">{fmt(c.total_paid, c.currency)} ✓</b>,
             c.deed_stage ? <Badge key="d" color={c.deed_stage === "handed_over" ? "green" : "blue"}>{c.deed_stage}</Badge> : <Badge key="d" color="gray">ຍັງບໍ່ເລີ່ມ</Badge>,
           ])} />
       )}
+      {tab === "paid100" && <Pager pg={pgPaid} unit="ສັນຍາ" />}
 
       {["overdue", "all"].includes(tab) && (
         <Table cols={["ສັນຍາ", "ລູກຄ້າ", "ງວດ", "ຄົບກຳນົດ", "ຕາມກຳນົດ", "ຮັບແລ້ວ", "ສະຖານະ", ""]}
-          rows={filtered.slice(0, 120).map((i) => [
+          rows={pgInst.rows.map((i) => [
             i.c?.contract_no, custBtn(i.contract_id, i.c?.customers?.full_name),
             i.seq === 0 ? "ດາວ (ງວດ 0)" : `ງວດ ${i.seq}`,
             <span key="d" className={i.st === "overdue" ? "text-brand-red" : ""}>{fdate(i.due_date)}</span>,
@@ -264,6 +273,7 @@ function Payments() {
             ) : null,
           ])} />
       )}
+      {["overdue", "all"].includes(tab) && <Pager pg={pgInst} unit="ງວດ" />}
 
       {/* ---- Modal ລາຍບຸກຄົນ: ການຮັບເງິນກ່ອນ, ຕາຕະລາງງວດ (ແຜນຈ່າຍ) ຢູ່ລຸ່ມ ---- */}
       <Modal open={!!drill} title={dc ? `${dc.customers?.full_name} — ${dc.contract_no}` : ""} onClose={() => setDrill(null)} wide>
