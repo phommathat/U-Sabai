@@ -60,29 +60,3 @@ export function buildInstallments(c) {
   }
   return rows;
 }
-
-// ---- ຕົວເລກ → ໂຕໜັງສືລາວ (ໃຊ້ໃນສັນຍາ/ໃບມັດຈຳ: "ຂຽນເປັນໂຕໜັງສື") ----
-export const CUR_WORD = { LAK: "ກີບ", THB: "ບາດ", USD: "ໂດລາ" };
-const LAO_DIGIT = ["ສູນ", "ໜຶ່ງ", "ສອງ", "ສາມ", "ສີ່", "ຫ້າ", "ຫົກ", "ເຈັດ", "ແປດ", "ເກົ້າ"];
-function laoBelowMillion(n) {
-  let s = "";
-  for (const [v, w] of [[100000, "ແສນ"], [10000, "ໝື່ນ"], [1000, "ພັນ"], [100, "ຮ້ອຍ"]]) {
-    const q = Math.floor(n / v);
-    if (q) { s += LAO_DIGIT[q] + w; n %= v; }
-  }
-  const t = Math.floor(n / 10), u = n % 10;
-  if (t) s += t === 1 ? "ສິບ" : t === 2 ? "ຊາວ" : LAO_DIGIT[t] + "ສິບ";
-  if (u) s += t && u === 1 ? "ເອັດ" : LAO_DIGIT[u];
-  return s;
-}
-export function laoWords(n) {
-  n = Math.round(Number(n) || 0);
-  if (n === 0) return "ສູນ";
-  if (n < 0) return "ລົບ" + laoWords(-n);
-  let s = "";
-  if (n >= 1e6) { s = laoWords(Math.floor(n / 1e6)) + "ລ້ານ"; n %= 1e6; }
-  return s + (n ? laoBelowMillion(n) : "");
-}
-// "1,500,000 ₭" → "ໜຶ່ງລ້ານຫ້າແສນກີບຖ້ວນ"
-export const moneyWords = (n, cur = "LAK") =>
-  n == null || n === "" || Number(n) === 0 ? "" : laoWords(n) + (CUR_WORD[cur] || "ກີບ") + "ຖ້ວນ";
