@@ -60,6 +60,10 @@ function Bookings() {
       booking_no: bookingNo, project_id: projectId, lot_id: form.lot_id,
       customer_id: customerId, booking_date: form.booking_date,
       deposit_amount: form.deposit_amount, currency: form.currency || "LAK",
+      deposit1_date: form.deposit1_date || form.booking_date,
+      deposit2_amount: form.deposit2_amount || null, deposit2_date: form.deposit2_date || null,
+      deposit3_amount: form.deposit3_amount || null, deposit3_date: form.deposit3_date || null,
+      deposit_note: form.deposit_note || null,
       contract_due_date: form.contract_due_date, status: "active",
       sales_person: profile?.full_name || null,
     });
@@ -133,13 +137,19 @@ function Bookings() {
                 </select>
               </Field>
             )}
-            <Field label="ເງິນມັດຈຳ *"><input className="inp" type="number" required value={form.deposit_amount || ""} onChange={(e) => setForm({ ...form, deposit_amount: e.target.value })} /></Field>
+            <Field label="ເງິນມັດຈຳ ງວດ 1 *"><input className="inp" type="number" required value={form.deposit_amount || ""} onChange={(e) => setForm({ ...form, deposit_amount: e.target.value })} /></Field>
+            <Field label="ວັນທີຈ່າຍ ງວດ 1"><input className="inp" type="date" value={form.deposit1_date || ""} onChange={(e) => setForm({ ...form, deposit1_date: e.target.value })} /></Field>
+            <Field label="ມັດຈຳ ງວດ 2"><input className="inp" type="number" value={form.deposit2_amount || ""} onChange={(e) => setForm({ ...form, deposit2_amount: e.target.value })} /></Field>
+            <Field label="ວັນທີຈ່າຍ ງວດ 2"><input className="inp" type="date" value={form.deposit2_date || ""} onChange={(e) => setForm({ ...form, deposit2_date: e.target.value })} /></Field>
+            <Field label="ມັດຈຳ ງວດ 3"><input className="inp" type="number" value={form.deposit3_amount || ""} onChange={(e) => setForm({ ...form, deposit3_amount: e.target.value })} /></Field>
+            <Field label="ວັນທີຈ່າຍ ງວດ 3"><input className="inp" type="date" value={form.deposit3_date || ""} onChange={(e) => setForm({ ...form, deposit3_date: e.target.value })} /></Field>
             <Field label="ສະກຸນເງິນ">
               <select className="inp" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })}>
                 <option>LAK</option><option>THB</option><option>USD</option>
               </select>
             </Field>
             <Field label="ກຳນົດມື້ເຮັດສັນຍາ *"><input className="inp" type="date" required value={form.contract_due_date || ""} onChange={(e) => setForm({ ...form, contract_due_date: e.target.value })} /></Field>
+            <Field label="ໝາຍເຫດມັດຈຳ" ><input className="inp" value={form.deposit_note || ""} onChange={(e) => setForm({ ...form, deposit_note: e.target.value })} /></Field>
             <Field label="ພະນັກງານຂາຍ (auto)"><input className="inp bg-slate-50" disabled value={profile?.full_name || "—"} /></Field>
             <div className="col-span-2 text-xs bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800">
               ຄີພຽງຂໍ້ມູນພື້ນຖານ — ລາຍລະອຽດອື່ນຕື່ມຕອນສັ່ງປຣິນໃບຈອງ · ບັນທຶກແລ້ວຕອນດິນປ່ຽນເປັນ "ຈອງ" ອັດຕະໂນມັດ
