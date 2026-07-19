@@ -24,7 +24,7 @@ function Customers() {
       .select("id,contract_no,sign_date,customer_id,project_id,currency,sale_price, lots(code), projects(code,name), title_deeds(stage)")
       .neq("status", "cancelled").limit(3000)
       .then(({ data }) => setContracts(data || []));
-    supabase.from("v_contract_balance").select("id,total_paid,balance,pct_paid").limit(3000)
+    supabase.from("v_contract_balance").select("id,total_paid,balance,pct_paid,deed_eligible").limit(3000)
       .then(({ data }) => setBal(Object.fromEntries((data || []).map((b) => [b.id, b]))));
   };
   useEffect(() => { load(); }, []);
@@ -160,9 +160,14 @@ function Customers() {
             cell((ct) => fdate(ct.sign_date)),
             cell((ct) => {
               const b = bal[ct.id] || {};
-              return (b.pct_paid || 0) >= 100
-                ? <span className="text-brand-green font-semibold">ຄົບ 100% ✓</span>
-                : <span>{b.pct_paid || 0}% · ຄ້າງ <b className="text-brand-red">{fmt(b.balance, ct.currency)}</b></span>;
+              return (
+                <div className="w-24">
+                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-brand-green" style={{ width: `${Math.min(b.pct_paid || 0, 100)}%` }} />
+                  </div>
+                  <div className="text-[10px] text-slate-400">{b.pct_paid || 0}%{b.deed_eligible && " · ✓ ເກນ 20%"}</div>
+                </div>
+              );
             }),
             cell((ct) => {
               const st = ct.title_deeds?.stage;
