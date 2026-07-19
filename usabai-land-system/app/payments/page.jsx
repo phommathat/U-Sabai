@@ -217,21 +217,25 @@ function Payments() {
       </div>
 
       {tab === "history" && (
-        <Table cols={["ຊື່ລູກຄ້າ", "ຈຳນວນເງິນ", "ຍອດຄ້າງ", "ເລກທີໃບຮັບເງິນ", "ເລກທີສັນຍາ", "ວັນທີຮັບເງິນ", "ໝາຍເຫດ", ""]}
+        <Table cols={["ຊື່ລູກຄ້າ", "ຈຳນວນເງິນ", "ຍອດຄ້າງ", "ງວດ", "ເລກທີສັນຍາ", "ວັນທີຮັບເງິນ", "ໝາຍເຫດ", ""]}
           empty="ຍັງບໍ່ມີການຮັບເງິນ"
-          rows={pgHist.rows.map((p) => [
+          rows={pgHist.rows.map((p) => {
+            const li = p.installment_id ? instMap[p.installment_id] : null;
+            return [
             custBtn(p.contract_id, cmap[p.contract_id]?.customers?.full_name),
             <b key="a">{fmt(p.amount_received, p.currency)}</b>,
             remainAfter[p.id] > 0
               ? <span key="r" className="text-brand-red">{fmt(remainAfter[p.id], cmap[p.contract_id]?.currency)}</span>
               : <span key="r" className="text-brand-green">ຄົບແລ້ວ ✓</span>,
-            p.receipt_no || "—", cmap[p.contract_id]?.contract_no, fdate(p.pay_date),
+            isDown(p) ? "ດາວ" : li ? `ງວດ ${li.seq}` : (p.note?.match(/ງວດ\s*\d+[^·]*/)?.[0]?.trim() || "—"),
+            cmap[p.contract_id]?.contract_no, fdate(p.pay_date),
             punctual(p),
             <span key="pr" className="flex gap-1">
               <a className="btn-o !py-1 !px-2 text-sm" title="ພິມໃບມອບຮັບເງິນ" href={`/print/receipt/${p.id}`} target="_blank">🖨</a>
               <a className="btn-o !py-1 !px-2 text-sm" title="ບັນທຶກເປັນ PDF ສົ່ງລູກຄ້າ" href={`/print/receipt/${p.id}?auto=1`} target="_blank">📄</a>
             </span>,
-          ])} />
+          ];
+          })} />
       )}
       {tab === "history" && <Pager pg={pgHist} />}
 
@@ -296,7 +300,7 @@ function Payments() {
                   const li = p.installment_id ? instMap[p.installment_id] : null;
                   return [
                     fdate(p.pay_date),
-                    isDown(p) ? "ດາວ (ງວດ 0)" : li ? `ງວດ ${li.seq}` : (p.note?.match(/ງວດ\s*\d+[^·]*/)?.[0]?.trim() || "—"),
+                    isDown(p) ? "ດາວ" : li ? `ງວດ ${li.seq}` : (p.note?.match(/ງວດ\s*\d+[^·]*/)?.[0]?.trim() || "—"),
                     li?.due_date ? fdate(li.due_date) : "—",
                     <b key="a">{fmt(p.amount_received, p.currency)}</b>,
                     remainAfter[p.id] > 0 ? fmt(remainAfter[p.id], dc.currency) : "ຄົບແລ້ວ ✓",
@@ -311,7 +315,7 @@ function Payments() {
               <Table cols={["ງວດ", "ຄົບກຳນົດ", "ຕາມກຳນົດ", "ຮັບແລ້ວ", "ຄ້າງ", "ສະຖານະ"]}
                 empty="✓ ຊຳລະຄົບທຸກງວດແລ້ວ"
                 rows={left.map((i) => [
-                  i.seq === 0 ? "ດາວ (ງວດ 0)" : `ງວດ ${i.seq}`,
+                  i.seq === 0 ? "ດາວ" : `ງວດ ${i.seq}`,
                   i.due_date ? fdate(i.due_date) : (i.due_condition === "after_deed_transfer" ? "ຫຼັງໂອນໃບຕາດິນ" : "—"),
                   fmt(i.amount_due, dc.currency), fmt(i.paid || null, dc.currency),
                   Number(i.amount_due) > i.paid ? <b key="o" className="text-brand-red">{fmt(Number(i.amount_due) - i.paid, dc.currency)}</b> : "—",
