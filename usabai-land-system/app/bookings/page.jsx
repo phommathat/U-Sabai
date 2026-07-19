@@ -85,12 +85,12 @@ function Bookings() {
   return (
     <>
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-bold text-navy">ການຈອງ / ໃບຈອງດິນ</h2>
+        <h2 className="text-lg font-bold text-navy">ໃບສັນຍາມັດຈຳເງິນຄ່າດິນ</h2>
         <button className="btn-p" onClick={() => projectId
           ? setForm({ booking_date: today, status: "active", mode: "new", currency: "LAK" })
-          : alert("ກະລຸນາເລືອກໂຄງການດຽວກ່ອນ ຈຶ່ງອອກໃບຈອງໄດ້")}>+ ອອກໃບຈອງດິນ</button>
+          : alert("ກະລຸນາເລືອກໂຄງການດຽວກ່ອນ ຈຶ່ງອອກໃບສັນຍາມັດຈຳໄດ້")}>+ ອອກໃບສັນຍາມັດຈຳ</button>
       </div>
-      <Table cols={["ເລກໃບຈອງ", "ລູກຄ້າ", "ຕອນ", "ວັນທີຈອງ", "ເງິນມັດຈຳ", "ກຳນົດເຮັດສັນຍາ", "ສະຖານະ", ""]}
+      <Table cols={["ເລກທີ", "ລູກຄ້າ", "ຕອນ", "ວັນທີ", "ເງິນມັດຈຳ", "ກຳນົດເຮັດສັນຍາ", "ສະຖານະ", ""]}
         rows={rows.map((b) => {
           const over = b.status === "active" && b.contract_due_date < today;
           return [
@@ -99,7 +99,7 @@ function Bookings() {
             <span key="d" className={over ? "text-brand-red font-semibold" : ""}>{fdate(b.contract_due_date)}{over && " ⚠"}</span>,
             <Badge key="s" color={over ? "red" : ST_COLOR[b.status]}>{over ? "ກາຍກຳນົດ" : BOOKING_STATUS[b.status]}</Badge>,
             <span key="a" className="flex gap-1">
-              <a className="btn-o !py-1 !px-2 text-xs" href={`/print/booking/${b.id}`} target="_blank">🖨 ໃບຈອງ</a>
+              <a className="btn-o !py-1 !px-2 text-xs" href={`/print/deposit/${b.id}`} target="_blank">🖨 ໃບສັນຍາມັດຈຳ</a>
               {b.status === "active" && (<>
                 <button className="btn-p !py-1 !px-2 text-xs" onClick={() => setStatus(b, "converted")}>ເຮັດສັນຍາແລ້ວ</button>
                 <button className="btn-o !py-1 !px-2 text-xs" onClick={() => setStatus(b, "cancelled")}>ຍົກເລີກ</button>
@@ -108,10 +108,10 @@ function Bookings() {
           ];
         })} />
 
-      <Modal open={!!form} title="ອອກໃບຈອງດິນ" onClose={() => setForm(null)}>
+      <Modal open={!!form} title="ອອກໃບສັນຍາມັດຈຳເງິນຄ່າດິນ" onClose={() => setForm(null)}>
         {form && (
           <form onSubmit={save} className="grid grid-cols-2 gap-3">
-            <Field label="ເລກໃບຈອງ"><input className="inp bg-slate-50" disabled value="ອອກອັດຕະໂນມັດ (2026-XXX)" /></Field>
+            <Field label="ເລກທີ"><input className="inp bg-slate-50" disabled value="ອອກອັດຕະໂນມັດ (2026-XXX)" /></Field>
             <Field label="ວັນທີຈອງ *"><input className="inp" type="date" required value={form.booking_date || ""} onChange={(e) => setForm({ ...form, booking_date: e.target.value })} /></Field>
             <Field label="ຕອນດິນ (ສະເພາະທີ່ຫວ່າງ) *">
               <select className="inp" required value={form.lot_id || ""} onChange={(e) => setForm({ ...form, lot_id: e.target.value })}>
@@ -152,9 +152,9 @@ function Bookings() {
             <Field label="ໝາຍເຫດມັດຈຳ" ><input className="inp" value={form.deposit_note || ""} onChange={(e) => setForm({ ...form, deposit_note: e.target.value })} /></Field>
             <Field label="ພະນັກງານຂາຍ (auto)"><input className="inp bg-slate-50" disabled value={profile?.full_name || "—"} /></Field>
             <div className="col-span-2 text-xs bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800">
-              ຄີພຽງຂໍ້ມູນພື້ນຖານ — ລາຍລະອຽດອື່ນຕື່ມຕອນສັ່ງປຣິນໃບຈອງ · ບັນທຶກແລ້ວຕອນດິນປ່ຽນເປັນ "ຈອງ" ອັດຕະໂນມັດ
+              ຄີພຽງຂໍ້ມູນພື້ນຖານ — ລາຍລະອຽດອື່ນຕື່ມຕອນສັ່ງປຣິນໃບສັນຍາມັດຈຳ · ບັນທຶກແລ້ວຕອນດິນປ່ຽນເປັນ "ຈອງ" ອັດຕະໂນມັດ
             </div>
-            <div className="col-span-2"><button className="btn-p w-full">💾 ບັນທຶກ + ອອກໃບຈອງ</button></div>
+            <div className="col-span-2"><button className="btn-p w-full">💾 ບັນທຶກ + ອອກໃບສັນຍາມັດຈຳ</button></div>
           </form>
         )}
       </Modal>
