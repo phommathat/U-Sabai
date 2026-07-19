@@ -60,9 +60,9 @@ function Bookings() {
       booking_no: bookingNo, project_id: projectId, lot_id: form.lot_id,
       customer_id: customerId, booking_date: form.booking_date,
       deposit_amount: form.deposit_amount, currency: form.currency || "LAK",
-      deposit1_date: form.deposit1_date || form.booking_date,
-      deposit2_amount: form.deposit2_amount || null, deposit2_date: form.deposit2_date || null,
-      deposit3_amount: form.deposit3_amount || null, deposit3_date: form.deposit3_date || null,
+      deposit1_date: form.booking_date,
+      deposit2_amount: form.deposit2_amount || null, deposit2_date: form.contract_due_date || null,
+      deposit3_amount: null, deposit3_date: null,
       deposit_note: form.deposit_note || null,
       contract_due_date: form.contract_due_date, status: "active",
       sales_person: profile?.full_name || null,
@@ -137,12 +137,8 @@ function Bookings() {
                 </select>
               </Field>
             )}
-            <Field label="ເງິນມັດຈຳ ງວດ 1 *"><input className="inp" type="number" required value={form.deposit_amount || ""} onChange={(e) => setForm({ ...form, deposit_amount: e.target.value })} /></Field>
-            <Field label="ວັນທີຈ່າຍ ງວດ 1"><input className="inp" type="date" value={form.deposit1_date || ""} onChange={(e) => setForm({ ...form, deposit1_date: e.target.value })} /></Field>
-            <Field label="ມັດຈຳ ງວດ 2"><input className="inp" type="number" value={form.deposit2_amount || ""} onChange={(e) => setForm({ ...form, deposit2_amount: e.target.value })} /></Field>
-            <Field label="ວັນທີຈ່າຍ ງວດ 2"><input className="inp" type="date" value={form.deposit2_date || ""} onChange={(e) => setForm({ ...form, deposit2_date: e.target.value })} /></Field>
-            <Field label="ມັດຈຳ ງວດ 3"><input className="inp" type="number" value={form.deposit3_amount || ""} onChange={(e) => setForm({ ...form, deposit3_amount: e.target.value })} /></Field>
-            <Field label="ວັນທີຈ່າຍ ງວດ 3"><input className="inp" type="date" value={form.deposit3_date || ""} onChange={(e) => setForm({ ...form, deposit3_date: e.target.value })} /></Field>
+            <Field label="ເງິນມັດຈຳ ງວດ 1 * (ຈ່າຍມື້ອອກໃບ)"><input className="inp" type="number" required value={form.deposit_amount || ""} onChange={(e) => setForm({ ...form, deposit_amount: e.target.value })} /></Field>
+            <Field label="ມັດຈຳ ງວດ 2 (ຈ່າຍມື້ເຮັດສັນຍາ)"><input className="inp" type="number" value={form.deposit2_amount || ""} onChange={(e) => setForm({ ...form, deposit2_amount: e.target.value })} /></Field>
             <Field label="ສະກຸນເງິນ">
               <select className="inp" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })}>
                 <option>LAK</option><option>THB</option><option>USD</option>
