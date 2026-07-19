@@ -95,14 +95,17 @@ function Dashboard() {
   const monthAt = (k) => new Date(baseFrom.getFullYear(), baseFrom.getMonth() + k, 6);
 
   // ຄາດຮັບ ຕໍ່ຮອບ ຈາກ v_monthly_due_cut6 (ງວດທີ່ຍັງບໍ່ຈ່າຍຄົບ) — ສະເພາະໂຄງການທີ່ເລືອກ
+  // ຈັບຄູ່ຕາມ ປີ-ເດືອນ ຂອງ period_from (ບໍ່ອີງມື້ 6/7 — view ອອກ period_from ມື້ 7, ຝັ່ງນີ້ຄິດມື້ 6)
   const projMonthly = monthly.filter((m) => sel.has(m.project_id));
-  const expAt = (fromStr) => {
+  const ym = (s) => (s || "").slice(0, 7); // 'YYYY-MM'
+  const expAt = (d) => {
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const byC = {};
-    projMonthly.filter((m) => m.period_from === fromStr)
+    projMonthly.filter((m) => ym(m.period_from) === key)
       .forEach((m) => { byC[m.currency] = (byC[m.currency] || 0) + Number(m.amount_expected || 0); });
     return byC;
   };
-  const aheadMonths = [1, 2, 3].map((k) => { const d = monthAt(k); return { d, byC: expAt(dstr(d)) }; });
+  const aheadMonths = [1, 2, 3].map((k) => { const d = monthAt(k); return { d, byC: expAt(d) }; });
 
   // ຮັບຈິງ ຈັດ payments ເຂົ້າຮອບ cut-6 (ຕາມ pay_date) — ສະເພາະໂຄງການທີ່ເລືອກ
   const collBuckets = {};
