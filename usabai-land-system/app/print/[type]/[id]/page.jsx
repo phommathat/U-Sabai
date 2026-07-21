@@ -156,12 +156,13 @@ export default function PrintPage() {
       <div className="contract-sheet max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[13.5px] leading-[1.8] text-justify">
         <style>{`
           @media print {
-            @page { size: A4 portrait; margin: 7mm; }
-            .contract-sheet { font-size: 10px !important; line-height: 1.32 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
-            .contract-sheet .c-title { font-size: 15px !important; margin: 4px 0 !important; }
-            .contract-sheet .c-note { font-size: 9px !important; }
-            .contract-sheet .sig-area { margin-top: 8px !important; }
-            .contract-sheet .sig-gap { margin-top: 40px !important; }
+            @page { size: A4 portrait; margin: 7mm 12mm; }
+            .contract-sheet { font-size: 11.5px !important; line-height: 1.45 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
+            .contract-sheet .c-title { font-size: 18px !important; margin: 5px 0 !important; }
+            .contract-sheet .c-note { font-size: 10.5px !important; }
+            .contract-sheet .sig-area { margin-top: 16px !important; }
+            .contract-sheet .sig-gap { margin-top: 46px !important; }
+            .contract-sheet .c-wit { margin-top: 34px !important; }
             .contract-sheet .c-logo { width: 26mm !important; height: 26mm !important; }
           }
         `}</style>
@@ -170,7 +171,7 @@ export default function PrintPage() {
           <img src="/logo-mark.png" alt="U-Sabai" className="c-logo absolute left-0 -top-1 w-28 h-28 object-contain" />
           <LaoHeader no={d.contract_no} date={d.sign_date} />
         </div>
-        <div className="c-title text-center text-xl font-bold my-3 underline underline-offset-4">ສັນຍາຊື້-ຂາຍດິນ</div>
+        <div className="c-title text-center text-2xl font-bold my-3 underline underline-offset-4">ສັນຍາຊື້-ຂາຍດິນ</div>
 
         <div className="space-y-1">
           <SellerLine />
@@ -245,7 +246,7 @@ export default function PrintPage() {
           <div>ລາຍເຊັນຜູ້ຂາຍ<div className="sig-gap mt-20 font-normal text-[12px]">{seller?.full_name}</div></div>
           <div>ນາຍບ້ານ, ບ້ານ <Dot w="110px" /><div className="sig-gap mt-20"></div></div>
         </div>
-        <div className="grid grid-cols-2 gap-10 mt-6 text-[13px]">
+        <div className="c-wit grid grid-cols-2 gap-10 mt-12 text-[13px]">
           <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (1) <Dot w="170px" /></div>
           <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (2) <Dot w="170px" /></div>
         </div>
@@ -265,24 +266,27 @@ export default function PrintPage() {
       // ງວດ 1 = ມື້ອອກໃບມັດຈຳ (booking_date) · ງວດ 2 = ມື້ນັດເຮັດສັນຍາ (contract_due_date)
       { amt: d.deposit_amount, date: d.deposit1_date || d.booking_date, label: "ງວດທີ 1: ຜູ້ຊື້ໄດ້ຕົກລົງຈ່າຍເງິນມັດຈຳ" },
       { amt: d.deposit2_amount, date: d.deposit2_date || d.contract_due_date, label: "ງວດທີ 2: ຜູ້ຊື້ນັດຈ່າຍໃນມື້ເຮັດສັນຍາ" },
-      { amt: d.deposit3_amount, date: d.deposit3_date, label: "ງວດທີ 3: ຜູ້ຊື້ນັດຈ່າຍຄັ້ງຕໍ່ໄປ" },
     ];
     return (
       <div className="dep-sheet max-w-[860px] mx-auto p-8 bg-white min-h-screen text-black text-[15.5px] leading-[2.05] text-justify">
         <style>{`
           @media print {
-            @page { size: A4 portrait; margin: 9mm; }
-            .dep-sheet { font-size: 12.5px !important; line-height: 1.55 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
-            .dep-sheet .d-note { font-size: 11px !important; }
-            .dep-sheet .sig-gap { margin-top: 46px !important; }
+            @page { size: A4 portrait; margin: 9mm 12mm; }
+            .dep-sheet { font-size: 13.5px !important; line-height: 1.7 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
+            .dep-sheet .d-title { font-size: 18px !important; margin: 5px 0 !important; }
+            .dep-sheet .d-note { font-size: 12px !important; }
+            .dep-sheet .sig-gap { margin-top: 50px !important; }
+            .dep-sheet .d-wit { margin-top: 40px !important; }
+            .dep-sheet .d-logo { width: 26mm !important; height: 26mm !important; }
           }
         `}</style>
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
         <div className="relative">
-          <img src="/logo-mark.png" alt="U-Sabai" className="absolute left-0 top-0 w-20 h-20 object-contain" />
+          <img src="/logo-mark.png" alt="U-Sabai" className="d-logo absolute left-0 -top-1 w-28 h-28 object-contain" />
           <LaoHeader no={d.booking_no} date={d.booking_date} />
         </div>
-        <div className="text-center text-2xl font-bold my-3 underline underline-offset-4">ໃບສັນຍາມັດຈຳເງິນຄ່າດິນ</div>
+        <div className="d-title text-center text-2xl font-bold my-3 underline underline-offset-4">ໃບສັນຍາມັດຈຳເງິນຄ່າດິນ</div>
+        <div className="h-6" />
 
         <div className="space-y-1">
           <SellerLine />
@@ -328,9 +332,9 @@ export default function PrintPage() {
           <div>ລາຍເຊັນຜູ້ຊື້<div className="sig-gap mt-20 font-normal text-[12px]">{cu.full_name}</div></div>
           <div>ລາຍເຊັນຜູ້ຂາຍ<div className="sig-gap mt-20 font-normal text-[12px]">{seller?.full_name}</div></div>
         </div>
-        <div className="grid grid-cols-2 gap-10 mt-6 text-[13px]">
-          <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (1) <Dot w="170px" /></div>
-          <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (2) <Dot w="170px" /></div>
+        <div className="d-wit grid grid-cols-2 gap-10 mt-16 text-[13px]">
+          <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (1) <Dot w="170px" /><div className="sig-gap mt-16" /></div>
+          <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (2) <Dot w="170px" /><div className="sig-gap mt-16" /></div>
         </div>
 
         <div className="no-print text-center text-[11px] text-slate-400 mt-8">
@@ -449,13 +453,22 @@ export default function PrintPage() {
     const cu = d.customers || {}, lo = d.lots || {}, pr = d.projects || {};
     const cur = d.currency || lo.currency || "LAK";
     return (
-      <div className="max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[13.5px] leading-[1.9] text-justify">
+      <div className="bk-sheet max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[15px] leading-[2.0] text-justify">
+        <style>{`
+          @media print {
+            @page { size: A4 portrait; margin: 10mm 12mm; }
+            .bk-sheet { font-size: 14px !important; line-height: 2.0 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
+            .bk-sheet .b-title { font-size: 18px !important; margin: 8px 0 !important; }
+            .bk-sheet .b-logo { width: 26mm !important; height: 26mm !important; }
+            .bk-sheet .b-sig { margin-top: 60px !important; }
+          }
+        `}</style>
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
         <div className="relative">
-          <img src="/logo-mark.png" alt="U-Sabai" className="absolute left-0 top-0 w-16 h-16 object-contain" />
+          <img src="/logo-mark.png" alt="U-Sabai" className="b-logo absolute left-0 -top-1 w-28 h-28 object-contain" />
           <LaoHeader no={d.booking_no} date={d.booking_date} />
         </div>
-        <div className="text-center text-xl font-bold my-3 underline underline-offset-4">ໃບຈອງດິນ</div>
+        <div className="b-title text-center text-2xl font-bold my-3 underline underline-offset-4">ໃບຈອງດິນ</div>
 
         <div className="space-y-1">
           <SellerLine />
@@ -482,9 +495,9 @@ export default function PrintPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-10 mt-10 text-center font-bold">
-          <div>ລາຍເຊັນຜູ້ຈອງ<div className="mt-20 font-normal text-[12px]">{cu.full_name}</div></div>
-          <div>ລາຍເຊັນຜູ້ຮັບຈອງ<div className="mt-20 font-normal text-[12px]">{seller?.full_name}</div></div>
+        <div className="b-sig grid grid-cols-2 gap-10 mt-14 text-center font-bold">
+          <div>ລາຍເຊັນຜູ້ຈອງ<div className="mt-24 font-normal text-[12px]">{cu.full_name}</div></div>
+          <div>ລາຍເຊັນຜູ້ຮັບຈອງ<div className="mt-24 font-normal text-[12px]">{seller?.full_name}</div></div>
         </div>
 
         <div className="no-print text-center text-[11px] text-slate-400 mt-8">
