@@ -24,8 +24,8 @@ const Row = ({ l, v }) => (
 );
 
 // ຊ່ອງຈຸດໆ ຕາມແບບຟອມທາງການ — ຫວ່າງ = ປະໄວ້ຂຽນມື
-const Dot = ({ v, w = "auto" }) => (
-  <span className="border-b border-dotted border-slate-500 px-2 inline-block text-center font-semibold" style={{ minWidth: w }}>{v ?? ""}</span>
+const Dot = ({ v, w = "auto", cls = "" }) => (
+  <span className={`border-b border-dotted border-slate-500 px-2 inline-block text-center font-semibold ${cls}`} style={{ minWidth: w }}>{v ?? ""}</span>
 );
 
 // ຫົວເອກະສານທາງການ ສປປ ລາວ + ເລກທີ/ວັນທີ
@@ -109,7 +109,7 @@ export default function PrintPage() {
   // ແຖວ "ຜູ້ຂາຍ" — ຊື່+ທີ່ຢູ່ ຈາກ profile ຜູ້ໃຊ້ (ຫວ່າງ = ຈຸດໆໃຫ້ຂຽນມື)
   const SellerLine = () => (
     <div>
-      <b>ຜູ້ຂາຍ:</b> <Dot v={seller?.full_name} w="220px" />, ທີ່ຢູ່ບໍລິສັດ
+      <b>ຜູ້ຂາຍ:</b> <Dot v={seller?.full_name} w="220px" cls="text-[1.15em] font-bold" />, ທີ່ຢູ່ບໍລິສັດ
       ບ້ານ <Dot v={COMPANY.village} w="150px" />,
       ເມືອງ <Dot v={COMPANY.district} w="140px" />,
       ແຂວງ <Dot v={COMPANY.province} w="150px" />.
@@ -126,7 +126,7 @@ export default function PrintPage() {
   // ຂໍ້ມູນຜູ້ຊື້ inline: ທ່ານ ... ອາຍຸ ... ສັນຊາດ ... ອາຊີບ ... ບ້ານ ... ເມືອງ ... ແຂວງ ... ໂທ ...
   const BuyerInline = ({ cu }) => (
     <>
-      ທ່ານ <Dot v={cu?.full_name} w="180px" /> ອາຍຸ <Dot v={cu?.age} w="40px" /> ປີ,
+      ທ່ານ <Dot v={cu?.full_name} w="180px" cls="text-[1.15em] font-bold" /> ອາຍຸ <Dot v={cu?.age} w="40px" /> ປີ,
       ສັນຊາດ <Dot v={cu?.nationality} w="60px" /> ອາຊີບ <Dot v={cu?.occupation} w="110px" />
       {" "}ບ້ານຢູ່ປະຈຸບັນ <Dot v={cu?.village} w="120px" /> ເມືອງ <Dot v={cu?.district} w="110px" />
       {" "}ແຂວງ <Dot v={cu?.province} w="110px" /> ເບີໂທລະສັບ <Dot v={cu?.tel} w="110px" /> (ຜູ້ຊື້)
@@ -161,14 +161,19 @@ export default function PrintPage() {
             .contract-sheet .c-title { font-size: 18px !important; margin: 5px 0 !important; }
             .contract-sheet .c-note { font-size: 10.5px !important; }
             .contract-sheet .sig-area { margin-top: 16px !important; }
-            .contract-sheet .sig-gap { margin-top: 46px !important; }
+            .contract-sheet .sig-gap { margin-top: 64px !important; }
             .contract-sheet .c-wit { margin-top: 34px !important; }
+            .contract-sheet .c-logo-wrap { width: 26mm !important; }
             .contract-sheet .c-logo { width: 26mm !important; height: 26mm !important; }
+            .contract-sheet .co-name { font-size: 8.5px !important; }
           }
         `}</style>
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
         <div className="relative">
-          <img src="/logo-mark.png" alt="U-Sabai" className="c-logo absolute left-0 -top-1 w-28 h-28 object-contain" />
+          <div className="c-logo-wrap absolute left-0 -top-1 w-28 text-center">
+            <img src="/logo-mark.png" alt="U-Sabai" className="c-logo w-28 h-28 object-contain mx-auto" />
+            <div className="co-name text-[11px] font-bold leading-snug">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
+          </div>
           <LaoHeader no={d.contract_no} date={d.sign_date} />
         </div>
         <div className="c-title text-center text-2xl font-bold my-3 underline underline-offset-4">ສັນຍາຊື້-ຂາຍດິນ</div>
@@ -190,11 +195,15 @@ export default function PrintPage() {
 
         <div className="font-bold mt-2">ທັງສອງຝ່າຍຕົກລົງເຫັນດີຮ່ວມກັນໃນເງື່ອນໄຂການຊື້-ຂາຍ ແລະ ຂໍ້ກຳນົດດັ່ງລຸ່ມນີ້:</div>
         <div className="space-y-1 mt-1">
-          <div>1. ຜູ້ຂາຍໄດ້ຕົກລົງເຫັນດີຂາຍດິນ ໃນລາຄາ <Dot v={fmt(d.sale_price, d.currency)} w="160px" /> (<Dot v={moneyWords(d.sale_price, d.currency)} w="220px" />)</div>
           <div>
-            2. ຜູ້ຊື້ໄດ້ຕົກລົງຈ່າຍ: ງວດທີ 1: ຊຳລະຈຳນວນເງິນ <Dot v={pay1 ? fmt(pay1, d.currency) : null} w="150px" />
-            {" "}(<Dot v={moneyWords(pay1, d.currency)} w="200px" />) ໃນມື້ເຮັດສັນຍາຊື້ຂາຍ<br />
-            ງວດທີ່ເຫຼືອຈຳນວນ <Dot v={rest > 0 ? fmt(rest, d.currency) : null} w="150px" /> (<Dot v={moneyWords(rest > 0 ? rest : 0, d.currency)} w="200px" />)
+            1. ຜູ້ຂາຍໄດ້ຕົກລົງເຫັນດີຂາຍດິນ ໃນລາຄາ <Dot v={fmt(d.sale_price, d.currency)} w="160px" /><br />
+            (<Dot v={moneyWords(d.sale_price, d.currency)} w="320px" />)
+          </div>
+          <div>
+            2. ຜູ້ຊື້ໄດ້ຕົກລົງຈ່າຍ: ງວດທີ 1: ຊຳລະຈຳນວນເງິນ <Dot v={pay1 ? fmt(pay1, d.currency) : null} w="150px" /> ໃນມື້ເຮັດສັນຍາຊື້ຂາຍ<br />
+            (<Dot v={moneyWords(pay1, d.currency)} w="320px" />)<br />
+            ງວດທີ່ເຫຼືອຈຳນວນ <Dot v={rest > 0 ? fmt(rest, d.currency) : null} w="150px" /><br />
+            (<Dot v={moneyWords(rest > 0 ? rest : 0, d.currency)} w="320px" />)
           </div>
           <div className="pl-4">
             <Chk on={isCash} /> ຈ່າຍສົດພາຍຫຼັງແລ່ນໃບຕາດິນຂອບທອງເປັນຂອງລູກຄ້າແລ້ວ (ພາຍໃນ 30 ວັນ)
@@ -242,9 +251,9 @@ export default function PrintPage() {
         </div>
 
         <div className="sig-area grid grid-cols-3 gap-6 mt-8 text-center font-bold">
-          <div>ລາຍເຊັນຜູ້ຊື້<div className="sig-gap mt-20 font-normal text-[12px]">{cu.full_name}</div></div>
-          <div>ລາຍເຊັນຜູ້ຂາຍ<div className="sig-gap mt-20 font-normal text-[12px]">{seller?.full_name}</div></div>
-          <div>ນາຍບ້ານ, ບ້ານ <Dot w="110px" /><div className="sig-gap mt-20"></div></div>
+          <div>ລາຍເຊັນຜູ້ຊື້<div className="sig-gap mt-28 font-bold text-[15px]">{cu.full_name}</div></div>
+          <div>ລາຍເຊັນຜູ້ຂາຍ<div className="sig-gap mt-28 font-bold text-[15px]">{seller?.full_name}</div></div>
+          <div>ນາຍບ້ານ, ບ້ານ <Dot w="110px" /><div className="sig-gap mt-28"></div></div>
         </div>
         <div className="c-wit grid grid-cols-2 gap-10 mt-12 text-[13px]">
           <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (1) <Dot w="170px" /></div>
@@ -275,14 +284,19 @@ export default function PrintPage() {
             .dep-sheet { font-size: 13.5px !important; line-height: 1.7 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
             .dep-sheet .d-title { font-size: 18px !important; margin: 5px 0 !important; }
             .dep-sheet .d-note { font-size: 12px !important; }
-            .dep-sheet .sig-gap { margin-top: 50px !important; }
+            .dep-sheet .sig-gap { margin-top: 68px !important; }
             .dep-sheet .d-wit { margin-top: 40px !important; }
+            .dep-sheet .d-logo-wrap { width: 26mm !important; }
             .dep-sheet .d-logo { width: 26mm !important; height: 26mm !important; }
+            .dep-sheet .co-name { font-size: 8.5px !important; }
           }
         `}</style>
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
         <div className="relative">
-          <img src="/logo-mark.png" alt="U-Sabai" className="d-logo absolute left-0 -top-1 w-28 h-28 object-contain" />
+          <div className="d-logo-wrap absolute left-0 -top-1 w-28 text-center">
+            <img src="/logo-mark.png" alt="U-Sabai" className="d-logo w-28 h-28 object-contain mx-auto" />
+            <div className="co-name text-[11px] font-bold leading-snug">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
+          </div>
           <LaoHeader no={d.booking_no} date={d.booking_date} />
         </div>
         <div className="d-title text-center text-2xl font-bold my-3 underline underline-offset-4">ໃບສັນຍາມັດຈຳເງິນຄ່າດິນ</div>
@@ -294,8 +308,8 @@ export default function PrintPage() {
           <div>
             ຮັບເງິນມັດຈຳຄ່າດິນຈາກ <BuyerInline cu={cu} /> ເຊິ່ງໄດ້ຕົກລົງຂາຍດິນຈັດສັນລ໋ອກທີ <Dot v={lo.code} w="80px" />
             {" "}ຂະໜາດ <Dot w="90px" /> ເນື້ອທີ່ດິນ <Dot v={lo.size_sqm ? Number(lo.size_sqm) + " ຕລມ" : null} w="90px" />
-            {" "}ມູນຄ່າ <Dot v={lo.list_price ? fmt(lo.list_price, lo.currency) : null} w="140px" />
-            {" "}(<Dot v={moneyWords(lo.list_price, lo.currency)} w="200px" />)
+            {" "}ມູນຄ່າ <Dot v={lo.list_price ? fmt(lo.list_price, lo.currency) : null} w="140px" /><br />
+            (<Dot v={moneyWords(lo.list_price, lo.currency)} w="320px" />)
           </div>
         </div>
 
@@ -329,8 +343,8 @@ export default function PrintPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-10 mt-8 text-center font-bold">
-          <div>ລາຍເຊັນຜູ້ຊື້<div className="sig-gap mt-20 font-normal text-[12px]">{cu.full_name}</div></div>
-          <div>ລາຍເຊັນຜູ້ຂາຍ<div className="sig-gap mt-20 font-normal text-[12px]">{seller?.full_name}</div></div>
+          <div>ລາຍເຊັນຜູ້ຊື້<div className="sig-gap mt-28 font-bold text-[15px]">{cu.full_name}</div></div>
+          <div>ລາຍເຊັນຜູ້ຂາຍ<div className="sig-gap mt-28 font-bold text-[15px]">{seller?.full_name}</div></div>
         </div>
         <div className="d-wit grid grid-cols-2 gap-10 mt-16 text-[13px]">
           <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (1) <Dot w="170px" /><div className="sig-gap mt-16" /></div>
@@ -459,13 +473,19 @@ export default function PrintPage() {
             @page { size: A4 portrait; margin: 10mm 12mm; }
             .bk-sheet { font-size: 14px !important; line-height: 2.0 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
             .bk-sheet .b-title { font-size: 18px !important; margin: 8px 0 !important; }
+            .bk-sheet .b-logo-wrap { width: 26mm !important; }
             .bk-sheet .b-logo { width: 26mm !important; height: 26mm !important; }
+            .bk-sheet .co-name { font-size: 8.5px !important; }
             .bk-sheet .b-sig { margin-top: 60px !important; }
+            .bk-sheet .sig-gap { margin-top: 72px !important; }
           }
         `}</style>
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
         <div className="relative">
-          <img src="/logo-mark.png" alt="U-Sabai" className="b-logo absolute left-0 -top-1 w-28 h-28 object-contain" />
+          <div className="b-logo-wrap absolute left-0 -top-1 w-28 text-center">
+            <img src="/logo-mark.png" alt="U-Sabai" className="b-logo w-28 h-28 object-contain mx-auto" />
+            <div className="co-name text-[11px] font-bold leading-snug">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
+          </div>
           <LaoHeader no={d.booking_no} date={d.booking_date} />
         </div>
         <div className="b-title text-center text-2xl font-bold my-3 underline underline-offset-4">ໃບຈອງດິນ</div>
@@ -483,8 +503,8 @@ export default function PrintPage() {
 
         <div className="mt-2 space-y-1">
           <div>
-            1. ຜູ້ຊື້ໄດ້ວາງເງິນຈອງ (ມັດຈຳ) ຈຳນວນ <Dot v={d.deposit_amount ? fmt(d.deposit_amount, cur) : null} w="160px" />
-            {" "}(<Dot v={moneyWords(d.deposit_amount, cur)} w="220px" />) ໃນວັນທີ <Dot v={fdate(d.booking_date)} w="110px" />
+            1. ຜູ້ຊື້ໄດ້ວາງເງິນຈອງ (ມັດຈຳ) ຈຳນວນ <Dot v={d.deposit_amount ? fmt(d.deposit_amount, cur) : null} w="160px" /> ໃນວັນທີ <Dot v={fdate(d.booking_date)} w="110px" /><br />
+            (<Dot v={moneyWords(d.deposit_amount, cur)} w="320px" />)
           </div>
           <div>
             2. ຜູ້ຊື້ຕ້ອງມາເຮັດສັນຍາຊື້-ຂາຍ ພາຍໃນວັນທີ <Dot v={d.contract_due_date ? fdate(d.contract_due_date) : null} w="110px" />.
@@ -496,8 +516,8 @@ export default function PrintPage() {
         </div>
 
         <div className="b-sig grid grid-cols-2 gap-10 mt-14 text-center font-bold">
-          <div>ລາຍເຊັນຜູ້ຈອງ<div className="mt-24 font-normal text-[12px]">{cu.full_name}</div></div>
-          <div>ລາຍເຊັນຜູ້ຮັບຈອງ<div className="mt-24 font-normal text-[12px]">{seller?.full_name}</div></div>
+          <div>ລາຍເຊັນຜູ້ຈອງ<div className="sig-gap mt-28 font-bold text-[15px]">{cu.full_name}</div></div>
+          <div>ລາຍເຊັນຜູ້ຮັບຈອງ<div className="sig-gap mt-28 font-bold text-[15px]">{seller?.full_name}</div></div>
         </div>
 
         <div className="no-print text-center text-[11px] text-slate-400 mt-8">
