@@ -17,6 +17,7 @@ function Dashboard() {
   const [fx, setFx] = useState({ LAK: 1, THB: 620, USD: 21500 });
   const [overdueInst, setOverdueInst] = useState([]);
   const [overdueBk, setOverdueBk] = useState([]);
+  const [unsoldLots, setUnsoldLots] = useState([]); // ຕອນທີ່ຍັງບໍ່ຂາຍ (available/reserved) — ຄິດມູນຄ່າຈາກ list_price
   // ໂໝດສະກຸນເງິນ: "split" = ແຍກສະກຸນ · "LAK"/"THB"/"USD" = ລວມເປັນສະກຸນນັ້ນ (ຄ່າເລີ່ມຕົ້ນ: ບາດ)
   const [curMode, setCurMode] = useState("THB");
 
@@ -33,6 +34,9 @@ function Dashboard() {
         .then(({ data }) => setCollected(data || [])); }
     supabase.from("fx_rates").select("*").then(({ data }) =>
       setFx(Object.fromEntries((data || []).map((r) => [r.currency, Number(r.rate_to_lak)]))));
+    supabase.from("lots").select("project_id,list_price,currency")
+      .neq("status", "sold").limit(10000)
+      .then(({ data }) => setUnsoldLots(data || []));
     supabase.from("v_overdue_installments").select("*").limit(15).then(({ data }) => setOverdueInst(data || []));
     supabase.from("v_overdue_bookings").select("*").limit(15).then(({ data }) => setOverdueBk(data || []));
   }, []);
@@ -64,6 +68,19 @@ function Dashboard() {
   const conv = (amt, from) => Math.round(toLAK(amt, from, fx) / (fx[split ? "LAK" : curMode] || 1));
   const tot = { sales: 0, received: 0, balance: 0, cost: 0 };
   curs.forEach((c) => ["sales", "received", "balance", "cost"].forEach((k) => { tot[k] += conv(byCur[c][k], c); }));
+
+  // ---- ມູນຄ່າດິນທີ່ຍັງບໍ່ທັນຂາຍ (list_price ຂອງຕອນ available/reserved) ----
+  const uFilt = unsoldLots.filter((r) => sel.has(r.project_id));
+  const unsoldByCur = {};   // ລວມທຸກໂຄງການ ແຍກສະກຸນ
+  const unsoldByProj = {};  // ຕໍ່ໂຄງການ ແຍກສະກຸນ
+  uFilt.forEach((r) => {
+    const v = Number(r.list_price || 0);
+    unsoldByCur[r.currency] = (unsoldByCur[r.currency] || 0) + v;
+    (unsoldByProj[r.project_id] = unsoldByProj[r.project_id] || {});
+    unsoldByProj[r.project_id][r.currency] = (unsoldByProj[r.project_id][r.currency] || 0) + v;
+  });
+  const unsoldCurs = CUR_ORDER.filter((c) => unsoldByCur[c]);
+  const unsoldTot = unsoldCurs.reduce((s, c) => s + conv(unsoldByCur[c], c), 0);
 
   // ---- money ຕໍ່ໂຄງການ (ສຳລັບ card) ----
   const moneyByProj = {};
@@ -162,7 +179,15 @@ function Dashboard() {
         <KPI label="ໂຄງການ" value={cFilt.length} />
         <KPI label="ຕອນດິນລວມ" value={nLots} note={`ຂາຍແລ້ວ ${nSold}`} />
         <KPI label="ຄວາມຄືບໜ້າຂາຍ" value={nLots ? Math.round((nSold / nLots) * 100) + "%" : "—"} />
-        <KPI label="ສະກຸນທີ່ໃຊ້" value={curs.join(" · ") || "—"} />
+        <KPI label="ມູນຄ່າດິນຍັງບໍ່ທັນຂາຍ"
+          value={!split
+            ? fmtMoney(unsoldTot, curMode)
+            : unsoldCurs.length
+              ? unsoldCurs.map((c) => (
+                  <div key={c} className="text-base leading-tight">{fmtMoney(unsoldByCur[c], c)}</div>
+                ))
+              : "—"}
+          note={`ຍັງເຫຼືອ ${nLots - nSold} ຕອນ · ຕາມລາຄາຕັ້ງ`} />
       </div>
 
       {/* ເງິນ ແຍກສະກຸນ (ຫຼື ລວມກີບ) */}
@@ -207,6 +232,8 @@ function Dashboard() {
         const ProjCard = (p) => {
           const m = moneyByProj[p.id];
           const mc = m ? CUR_ORDER.filter((c) => m.cur[c]) : [];
+          const u = unsoldByProj[p.id];
+          const uc = u ? CUR_ORDER.filter((c) => u[c]) : [];
           return (
             <div key={p.id} className="card">
               <div className="flex justify-between items-start mb-2">
@@ -216,6 +243,12 @@ function Dashboard() {
               <div className="h-2 bg-slate-100 rounded-full overflow-hidden mb-3">
                 <div className="h-full bg-brand-green rounded-full"
                   style={{ width: `${p.total_lots ? (p.sold_lots / p.total_lots) * 100 : 0}%` }} />
+              </div>
+              <div className="text-xs text-slate-500 mb-2 pb-2 border-b border-slate-100">
+                ດິນຍັງບໍ່ທັນຂາຍ ({p.total_lots - p.sold_lots} ຕອນ):{" "}
+                {uc.length
+                  ? uc.map((c) => <b key={c} className="text-amber-600 mr-2">{fmtMoney(u[c], c)}</b>)
+                  : <span className="text-slate-300">—</span>}
               </div>
               {mc.length ? mc.map((c) => (
                 <div key={c} className="grid grid-cols-2 gap-1 text-xs text-slate-500 mb-1 pb-1 border-b border-slate-50 last:border-0">
