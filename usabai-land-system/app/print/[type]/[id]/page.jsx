@@ -172,7 +172,7 @@ export default function PrintPage() {
         <div className="relative">
           <div className="c-logo-wrap absolute left-0 -top-1 w-28 text-center">
             <img src="/logo-mark.png" alt="U-Sabai" className="c-logo w-28 h-28 object-contain mx-auto" />
-            <div className="co-name text-[11px] font-bold leading-snug whitespace-nowrap">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
+            <div className="co-name text-[16px] font-bold leading-snug whitespace-nowrap">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
           </div>
           <LaoHeader no={d.contract_no} date={d.sign_date} />
         </div>
@@ -295,7 +295,7 @@ export default function PrintPage() {
         <div className="relative">
           <div className="d-logo-wrap absolute left-0 -top-1 w-28 text-center">
             <img src="/logo-mark.png" alt="U-Sabai" className="d-logo w-28 h-28 object-contain mx-auto" />
-            <div className="co-name text-[11px] font-bold leading-snug whitespace-nowrap">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
+            <div className="co-name text-[16px] font-bold leading-snug whitespace-nowrap">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
           </div>
           <LaoHeader no={d.booking_no} date={d.booking_date} />
         </div>
@@ -381,9 +381,8 @@ export default function PrintPage() {
         <div className="flex justify-between items-start mt-2 mb-4">
           <div className="flex items-center gap-3">
             <img src="/logo-mark.png" alt="U-Sabai" className="w-16 h-16" />
-            <div className="text-[13px]">
+            <div className="text-[16px]">
               <div className="font-bold">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
-              <div className="font-bold">U-Sabai Land and House Sole Co.,Ltd</div>
             </div>
           </div>
           <div className="text-center text-2xl font-bold mt-2">ໃບມອບຮັບເງິນ</div>
