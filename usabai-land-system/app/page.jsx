@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import Shell, { useApp } from "@/components/Shell";
-import { KPI, Badge, Table } from "@/components/ui";
+import { KPI, Badge } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
-import { fmtM, fdate, fmt, fmtMoney, toLAK } from "@/lib/fmt";
+import { fmtMoney, toLAK } from "@/lib/fmt";
 
 const CUR_ORDER = ["LAK", "THB", "USD"];
 
@@ -15,8 +15,6 @@ function Dashboard() {
   const [monthly, setMonthly] = useState([]);  // ຄາດຄະເນລາຍຮັບປະຈຳເດືອນ (ທຸກໂຄງການ)
   const [collected, setCollected] = useState([]); // ການຮັບເງິນຈິງ (~4 ເດືອນຫຼ້າສຸດ) ສຳລັບສະຫຼຸບເກັບເງິນ
   const [fx, setFx] = useState({ LAK: 1, THB: 620, USD: 21500 });
-  const [overdueInst, setOverdueInst] = useState([]);
-  const [overdueBk, setOverdueBk] = useState([]);
   const [unsoldLots, setUnsoldLots] = useState([]); // ຕອນທີ່ຍັງບໍ່ຂາຍ (available/reserved) — ຄິດມູນຄ່າຈາກ list_price
   // ໂໝດສະກຸນເງິນ: "split" = ແຍກສະກຸນ · "LAK"/"THB"/"USD" = ລວມເປັນສະກຸນນັ້ນ (ຄ່າເລີ່ມຕົ້ນ: ບາດ)
   const [curMode, setCurMode] = useState("THB");
@@ -37,8 +35,6 @@ function Dashboard() {
     supabase.from("lots").select("project_id,list_price,currency")
       .neq("status", "sold").limit(10000)
       .then(({ data }) => setUnsoldLots(data || []));
-    supabase.from("v_overdue_installments").select("*").limit(2000).then(({ data }) => setOverdueInst(data || []));
-    supabase.from("v_overdue_bookings").select("*").limit(2000).then(({ data }) => setOverdueBk(data || []));
   }, []);
 
   // ---- filter ຕາມໂຄງການທີ່ຕິກເລືອກ ----
@@ -143,7 +139,24 @@ function Dashboard() {
   const aheadTot = sumByC(aheadMonths);
   const pastTot = sumByC(pastMonths);
 
+  const MonthTable = ({ items, total, totColor, totLabel = "ລວມ" }) => (
+    <table className="w-full text-sm">
+      <tbody>
+        {items.map(({ d, byC }) => (
+          <tr key={+d} className="border-b border-slate-100 last:border-0">
+            <td className="py-1.5 text-slate-600">{monLabel(d)}</td>
+            <td className="py-1.5 text-right">{showAmt(byC)}</td>
+          </tr>
+        ))}
+        <tr className="border-t-2 border-slate-200">
+          <td className="py-1.5 font-semibold text-navy">{totLabel}</td>
+          <td className={`py-1.5 text-right ${totColor}`}>{showAmt(total)}</td>
+        </tr>
+      </tbody>
+    </table>
+  );
 
+  return (
     <>
       <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
         <h2 className="text-lg font-bold text-navy">{projectIds.length === projects.length ? "ພາບລວມທຸກໂຄງການ" : `ພາບລວມ ${projectIds.length} ໂຄງການ`}</h2>
@@ -258,43 +271,6 @@ function Dashboard() {
           )}
         </>);
       })()}
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <div>
-          <h3 className="font-bold text-navy mb-2">⚠️ ງວດຄ້າງຊຳລະ</h3>
-          {instSel.length > 0 && (
-            <div className="flex justify-between items-center bg-red-50/60 border border-red-100 rounded-lg px-3 py-2 mb-2 text-sm">
-              <span className="text-slate-600">ລວມ {instSel.length} ງວດຄ້າງ</span>
-              <span>{showAmt(instByCur)}</span>
-            </div>
-          )}
-          <Table cols={["ສັນຍາ", "ລູກຄ້າ", "ຄົບກຳນົດ", "ຍອດຄ້າງ"]}
-            empty="ບໍ່ມີງວດຄ້າງຊຳລະ 🎉"
-            rows={instSel.slice(0, 15).map((o) => [
-              o.contract_no, o.full_name,
-              <span key="d" className="text-brand-red">{fdate(o.due_date)}</span>,
-              fmt(o.amount_outstanding),
-            ])} />
-          {instSel.length > 15 && <p className="text-xs text-slate-400 mt-1">ສະແດງ 15 ຈາກ {instSel.length} ລາຍການ</p>}
-        </div>
-        <div>
-          <h3 className="font-bold text-navy mb-2">📌 ໃບສັນຍາມັດຈຳກາຍກຳນົດເຮັດສັນຍາ</h3>
-          {bkSel.length > 0 && (
-            <div className="flex justify-between items-center bg-red-50/60 border border-red-100 rounded-lg px-3 py-2 mb-2 text-sm">
-              <span className="text-slate-600">ລວມ {bkSel.length} ໃບ ກາຍກຳນົດ</span>
-              <span className="font-bold text-navy">ມັດຈຳ {fmt(bkDepTot)}</span>
-            </div>
-          )}
-          <Table cols={["ເລກທີ", "ລູກຄ້າ", "ຕອນ", "ກຳນົດ", "ກາຍ (ວັນ)"]}
-            empty="ບໍ່ມີໃບສັນຍາມັດຈຳກາຍກຳນົດ"
-            rows={bkSel.slice(0, 15).map((b) => [
-              b.booking_no, b.full_name, b.lot_code,
-              <span key="d" className="text-brand-red">{fdate(b.contract_due_date)}</span>,
-              b.days_overdue,
-            ])} />
-          {bkSel.length > 15 && <p className="text-xs text-slate-400 mt-1">ສະແດງ 15 ຈາກ {bkSel.length} ລາຍການ</p>}
-        </div>
-      </div>
     </>
   );
 }
