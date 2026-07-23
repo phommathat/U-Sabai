@@ -63,7 +63,7 @@ export default function PrintPage() {
         .eq("id", s.session.user.id).maybeSingle().then(({ data: p }) => setSeller(p || {}));
       let q;
       if (type === "receipt")
-        q = supabase.from("payments").select("*, installments(seq), contracts(contract_no, currency, sale_price, customers(full_name, first_name, last_name, tel, village, district, province), lots(code, size_sqm), projects(name, village, district, province))").eq("id", id).single();
+        q = supabase.from("payments").select("*, installments(seq), contracts(contract_no, currency, sale_price, n_installments, sales_person, customers(full_name, first_name, last_name, tel, village, district, province), lots(code, size_sqm), projects(name, village, district, province))").eq("id", id).single();
       else if (type === "booking")
         q = supabase.from("bookings").select(`*, customers(${CUSTOMER_COLS}), lots(code, size_sqm, list_price, currency), projects(name, village, district, province)`).eq("id", id).single();
       else if (type === "deposit")
@@ -358,83 +358,78 @@ export default function PrintPage() {
     );
   }
 
-  // ---------- ໃບມອບຮັບເງິນ (layout ທາງການ ຕາມ template ບໍລິສັດ) ----------
+  // ---------- ໃບມອບຮັບເງິນ (format ດຽວກັນກັບ ສັນຍາຊື້-ຂາຍ) ----------
   if (type === "receipt") {
     const c = d.contracts || {};
     const cu = c.customers || {};
     const pr = c.projects || {};
     const cash = (d.channel || "").includes("ສົດ");
-    const pd = fdate(d.pay_date).split("/");
-    const detail = d.installments?.seq != null
-      ? (d.installments.seq === 0 ? "ເງິນດາວ/ມັດຈຳ" : `ຄ່າງວດ ທີ ${d.installments.seq}`)
-      : (d.note || "ຊຳລະຄ່າດິນ");
+    // ຜູ້ຂາຍ = ຜູ້ອອກສັນຍາສະບັບຕົ້ນ (contracts.sales_person) · ຜູ້ຮັບເງິນ = ຜູ້ໃຊ້ລະບົບປັດຈຸບັນ
+    const sellerName = c.sales_person || seller?.full_name;
+    // ຈຳນວນແຖວຕາຕະລາງ = ເງິນດາວ + ຈຳນວນງວດທີ່ລູກຄ້າຊຳລະ · ແບ່ງເປັນ 2 ຝັ່ງ (ດາວ,ງວດ1.. | ງວດ..)
+    const nInst = Number(c.n_installments || 0);
+    const labels = ["ດາວ", ...Array.from({ length: nInst }, (_, i) => `ງວດ${i + 1}`)];
+    const half = Math.ceil(labels.length / 2);
+    const rows = Array.from({ length: half }, (_, i) => ({ L: labels[i] ?? "", R: labels[i + half] ?? "" }));
     return (
-      <div className="max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[14px] leading-relaxed">
+      <div className="rcpt-sheet max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[14px] leading-[1.7]">
+        <style>{`
+          @media print {
+            @page { size: A4 portrait; margin: 10mm 12mm; }
+            .rcpt-sheet { font-size: 12px !important; line-height: 1.5 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
+            .rcpt-sheet .r-title { font-size: 18px !important; margin: 5px 0 !important; }
+            .rcpt-sheet .co-name { font-size: 11px !important; }
+            .rcpt-sheet .r-logo { width: 26mm !important; height: 26mm !important; }
+            .rcpt-sheet .r-info { font-size: 11px !important; }
+            .rcpt-sheet .rcpt-tbl { font-size: 11px !important; }
+            .rcpt-sheet .rcpt-tbl td { padding: 2px 4px !important; }
+            .rcpt-sheet .r-sig { margin-top: 34px !important; }
+          }
+        `}</style>
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
-
-        <div className="text-center">
-          <div className="font-bold">ສາທາລະນະລັດ ປະຊາທິປະໄຕ ປະຊາຊົນລາວ</div>
-          <div className="font-bold">ສັນຕິພາບ ເອກະລາດ ປະຊາທິປະໄຕ ເອກະພາບ ວັດທະນະຖາວອນ</div>
-          <div>----------------00----------------</div>
+        <div className="relative">
+          <div className="r-logo-wrap absolute left-0 -top-1 w-28 text-center">
+            <img src="/logo-mark.png" alt="U-Sabai" className="r-logo w-28 h-28 object-contain mx-auto" />
+            <div className="co-name text-[11px] font-bold leading-snug whitespace-nowrap">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
+          </div>
+          <LaoHeader no={d.receipt_no} date={d.pay_date} />
         </div>
+        <div className="r-title text-center text-2xl font-bold my-3 underline underline-offset-4">ໃບມອບຮັບເງິນ</div>
 
-     <div className="relative">
-          <div className="c-logo-wrap absolute left-0 -top-1 w-28 text-center">
-            <img src="/logo-mark.png" alt="U-Sabai" className="c-logo w-28 h-28 object-contain mx-auto" />
-            <div className="co-name text-[16px] font-bold leading-snug whitespace-nowrap">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
+        <div className="r-info space-y-1 mt-2">
+          <div className="whitespace-nowrap overflow-hidden">
+            <b>ຜູ້ຂາຍ:</b> <Dot v={sellerName} w="170px" cls="text-[1.1em] font-bold" />, ບ້ານ <Dot v={COMPANY.village} w="120px" />,
+            ເມືອງ <Dot v={COMPANY.district} w="110px" />, ແຂວງ <Dot v={COMPANY.province} w="120px" />.
           </div>
-          <LaoHeader no={d.contract_no} date={d.sign_date} />
-        </div>
-        <div className="c-title text-center text-2xl font-bold my-3 underline underline-offset-4">ສັນຍາຊື້-ຂາຍດິນ</div>
-
-          <div className="text-[13px] mt-1">
-            <div><b>No.</b> : <Dot v={d.receipt_no} w="110px" /></div>
-            <div className="mt-1">ວັນທີ: <Dot v={pd[0]} w="34px" />/<Dot v={pd[1]} w="34px" />/<Dot v={pd[2]} w="48px" /></div>
+          <div className="whitespace-nowrap overflow-hidden">
+            <b>ຜູ້ຊື້:</b> <Dot v={cu.full_name} w="180px" cls="text-[1.1em] font-bold" /> ລະຫັດດິນ <Dot v={c.lots?.code} w="80px" />
+            {" "}ເນື້ອທີ່ <Dot v={c.lots?.size_sqm ? Number(c.lots.size_sqm) + " ຕລມ" : ""} w="90px" /> ລາຄາ <Dot v={fmt(c.sale_price, c.currency)} w="130px" />
           </div>
-        </div>
-
-        <div className="space-y-2">
-          <div>
-            <b>ຜູ້ຂາຍ:</b> <Dot v={seller?.full_name} w="200px" />, ທີ່ຢູ່ບໍລິສັດ
-            ບ້ານ <Dot v={COMPANY.village} w="140px" />,
-            ເມືອງ <Dot v={COMPANY.district} w="130px" />,
-            ແຂວງ <Dot v={COMPANY.province} w="140px" />.
-          </div>
-          <div>
-            ຊື່ຜູ້ຊື້: <Dot v={cu.full_name} w="220px" />
-            ລະຫັດດິນ: <Dot v={c.lots?.code} w="90px" />
-            ເນື້ອທີ່ດິນ: <Dot v={c.lots?.size_sqm ? Number(c.lots.size_sqm) + " ຕລມ" : ""} w="100px" />
-            ລາຄາ: <Dot v={fmt(c.sale_price, c.currency)} w="140px" />
-          </div>
-          <div>
-            ທີ່ດິນຕັ້ງຢູ່ບ້ານ: <Dot v={pr.village || pr.name} w="220px" />
-            ເມືອງ: <Dot v={pr.district} w="180px" />
-            ແຂວງ: <Dot v={pr.province} w="180px" />
+          <div className="whitespace-nowrap overflow-hidden">
+            <b>ທີ່ຕັ້ງດິນ:</b> ບ້ານ <Dot v={pr.village || pr.name} w="160px" /> ເມືອງ <Dot v={pr.district} w="140px" /> ແຂວງ <Dot v={pr.province} w="150px" />
           </div>
         </div>
 
-        <table className="w-full border-collapse border-2 border-black mt-4 text-center">
+        <table className="rcpt-tbl w-full border-collapse border-2 border-black mt-3 text-center text-[13px]">
           <thead>
             <tr className="font-bold">
-              <td className="border-2 border-black p-2 w-12">ລ/ດ</td>
-              <td className="border-2 border-black p-2">ເນື້ອໃນການຊຳລະ</td>
-              <td className="border-2 border-black p-2">ຈຳນວນເງິນຊຳລະຄັ້ງນີ້</td>
-              <td className="border-2 border-black p-2">ຈຳນວນເງິນທີ່ຍັງເຫຼືອ</td>
+              <td className="border-2 border-black p-2 w-16">ລ/ດ</td>
+              <td className="border-2 border-black p-2">ເງິນຊຳລະຄັ້ງນີ້</td>
+              <td className="border-2 border-black p-2">ຍອດທີ່ຍັງເຫຼືອ</td>
+              <td className="border-2 border-black p-2 w-16">ລ/ດ</td>
+              <td className="border-2 border-black p-2">ເງິນຊຳລະຄັ້ງນີ້</td>
+              <td className="border-2 border-black p-2">ຍອດທີ່ຍັງເຫຼືອ</td>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td className="border-2 border-black p-2">1</td>
-              <td className="border-2 border-black p-2">{detail}</td>
-              <td className="border-2 border-black p-2 font-bold">{fmt(d.amount_received, d.currency)}</td>
-              <td className="border-2 border-black p-2 font-bold">{rem == null ? "…" : rem > 0 ? fmt(rem, c.currency) : "ຄົບແລ້ວ"}</td>
-            </tr>
-            {[2, 3, 4].map((n) => (
-              <tr key={n}>
-                <td className="border-2 border-black p-4"></td>
-                <td className="border-2 border-black p-4"></td>
-                <td className="border-2 border-black p-4"></td>
-                <td className="border-2 border-black p-4"></td>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td className="border-2 border-black p-2 font-bold">{r.L}</td>
+                <td className="border-2 border-black p-2"></td>
+                <td className="border-2 border-black p-2"></td>
+                <td className="border-2 border-black p-2 font-bold">{r.R}</td>
+                <td className="border-2 border-black p-2"></td>
+                <td className="border-2 border-black p-2"></td>
               </tr>
             ))}
           </tbody>
@@ -449,10 +444,10 @@ export default function PrintPage() {
           </label>
         </div>
 
-        <div className="grid grid-cols-3 gap-8 mt-8 text-center font-bold">
-          <div>ຜູ້ຈ່າຍເງິນ<div className="mt-24 font-normal text-[12px] text-slate-400"></div></div>
-          <div>ຜູ້ຮັບເງິນ<div className="mt-24 font-normal text-[12px] text-slate-400"></div></div>
-          <div>ພະຍານ<div className="mt-24 font-normal text-[12px] text-slate-400"></div></div>
+        <div className="r-sig grid grid-cols-3 gap-8 mt-8 text-center font-bold">
+          <div>ຜູ້ຈ່າຍເງິນ<div className="mt-20 font-bold text-[14px]">{cu.full_name}</div></div>
+          <div>ຜູ້ຮັບເງິນ<div className="mt-20 font-bold text-[14px]">{seller?.full_name}</div></div>
+          <div>ພະຍານ<div className="mt-20"></div></div>
         </div>
 
         <div className="no-print text-center text-[11px] text-slate-400 mt-8">
@@ -480,7 +475,7 @@ export default function PrintPage() {
             .bk-sheet .sig-gap { margin-top: 72px !important; }
           }
         `}</style>
-        <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
+        <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ</button>
         <div className="relative">
           <div className="b-logo-wrap absolute left-0 -top-1 w-28 text-center">
             <img src="/logo-mark.png" alt="U-Sabai" className="b-logo w-28 h-28 object-contain mx-auto" />
