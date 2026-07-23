@@ -25,9 +25,9 @@ function Dashboard() {
     supabase.from("v_project_summary").select("*").then(({ data }) => setCounts(data || []));
     supabase.from("v_project_money_cur").select("*").then(({ data }) => setMoney(data || []));
     supabase.from("v_project_cost_cur").select("*").then(({ data }) => setCosts(data || []));
-    supabase.from("v_monthly_due_cut6").select("*").then(({ data }) => setMonthly(data || []));
-    // ການຮັບເງິນຈິງ ~4 ເດືອນຫຼ້າສຸດ (ຄຸມ 3 ຮອບຜ່ານມາ + ຮອບປັດຈຸບັນ) — join ໂຄງການ ເພື່ອ filter
-    { const s = new Date(); s.setMonth(s.getMonth() - 4);
+    supabase.from("v_monthly_due_cal").select("*").then(({ data }) => setMonthly(data || []));
+    // ການຮັບເງິນຈິງ ~7 ເດືອນຫຼ້າສຸດ (ຄຸມ 5 ຮອບຜ່ານມາ + ຮອບປັດຈຸບັນ) — join ໂຄງການ ເພື່ອ filter
+    { const s = new Date(); s.setMonth(s.getMonth() - 7);
       supabase.from("payments")
         .select("amount_received,currency,pay_date,contracts!inner(project_id)")
         .neq("pay_date", "1900-01-01").gte("pay_date", s.toISOString().slice(0, 10)).limit(10000)
@@ -37,8 +37,8 @@ function Dashboard() {
     supabase.from("lots").select("project_id,list_price,currency")
       .neq("status", "sold").limit(10000)
       .then(({ data }) => setUnsoldLots(data || []));
-    supabase.from("v_overdue_installments").select("*").limit(15).then(({ data }) => setOverdueInst(data || []));
-    supabase.from("v_overdue_bookings").select("*").limit(15).then(({ data }) => setOverdueBk(data || []));
+    supabase.from("v_overdue_installments").select("*").limit(2000).then(({ data }) => setOverdueInst(data || []));
+    supabase.from("v_overdue_bookings").select("*").limit(2000).then(({ data }) => setOverdueBk(data || []));
   }, []);
 
   // ---- filter ຕາມໂຄງການທີ່ຕິກເລືອກ ----
@@ -102,36 +102,35 @@ function Dashboard() {
     </div>
   );
 
-  // ---- ຄາດຄະເນລາຍຮັບ 3 ເດືອນຂ້າງໜ້າ + ຜົນເກັບເງິນ 3 ເດືອນຜ່ານມາ (ຕາມໂຄງການທີ່ເລືອກ) ----
+  // ---- ຄາດຄະເນລາຍຮັບ 6 ເດືອນຂ້າງໜ້າ + ຜົນເກັບເງິນ 6 ເດືອນຜ່ານມາ (ຮອບເດືອນປະຕິທິນ: ວັນທີ 1–ທ້າຍເດືອນ · ຕາມໂຄງການທີ່ເລືອກ) ----
   const LAO_MON = ["ມັງກອນ", "ກຸມພາ", "ມີນາ", "ເມສາ", "ພຶດສະພາ", "ມິຖຸນາ", "ກໍລະກົດ", "ສິງຫາ", "ກັນຍາ", "ຕຸລາ", "ພະຈິກ", "ທັນວາ"];
   const monLabel = (d) => `${LAO_MON[d.getMonth()]} ${d.getFullYear()}`;
-  // ຮອບ cut-6: period_from = ວັນທີ 6 ຂອງເດືອນ (ຄືກັບ v_monthly_due_cut6)
-  const cut6From = (s) => { const d = new Date(s); d.setDate(d.getDate() - 6); return new Date(d.getFullYear(), d.getMonth(), 6); };
-  const dstr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-06`;
-  const baseFrom = cut6From(todayStr);
-  const monthAt = (k) => new Date(baseFrom.getFullYear(), baseFrom.getMonth() + k, 6);
+  // ຮອບເດືອນປະຕິທິນ: ວັນທີ 1 ຫາ ວັນສຸດທ້າຍ ຂອງເດືອນ (ຈັບຄູ່ຕາມ ປີ-ເດືອນ)
+  const mkey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; // 'YYYY-MM'
+  const now0 = new Date(todayStr);
+  const baseFrom = new Date(now0.getFullYear(), now0.getMonth(), 1);
+  const monthAt = (k) => new Date(baseFrom.getFullYear(), baseFrom.getMonth() + k, 1);
 
-  // ຄາດຮັບ ຕໍ່ຮອບ ຈາກ v_monthly_due_cut6 (ງວດທີ່ຍັງບໍ່ຈ່າຍຄົບ) — ສະເພາະໂຄງການທີ່ເລືອກ
-  // ຈັບຄູ່ຕາມ ປີ-ເດືອນ ຂອງ period_from (ບໍ່ອີງມື້ 6/7 — view ອອກ period_from ມື້ 7, ຝັ່ງນີ້ຄິດມື້ 6)
+  // ຄາດຮັບ ຕໍ່ເດືອນ ຈາກ v_monthly_due_cal (ງວດທີ່ຍັງບໍ່ຈ່າຍຄົບ) — ສະເພາະໂຄງການທີ່ເລືອກ
   const projMonthly = monthly.filter((m) => sel.has(m.project_id));
   const ym = (s) => (s || "").slice(0, 7); // 'YYYY-MM'
   const expAt = (d) => {
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const key = mkey(d);
     const byC = {};
     projMonthly.filter((m) => ym(m.period_from) === key)
       .forEach((m) => { byC[m.currency] = (byC[m.currency] || 0) + Number(m.amount_expected || 0); });
     return byC;
   };
-  const aheadMonths = [1, 2, 3].map((k) => { const d = monthAt(k); return { d, byC: expAt(d) }; });
+  const aheadMonths = [1, 2, 3, 4, 5, 6].map((k) => { const d = monthAt(k); return { d, byC: expAt(d) }; });
 
-  // ຮັບຈິງ ຈັດ payments ເຂົ້າຮອບ cut-6 (ຕາມ pay_date) — ສະເພາະໂຄງການທີ່ເລືອກ
+  // ຮັບຈິງ ຈັດ payments ຕາມເດືອນປະຕິທິນ (ຕາມ pay_date) — ສະເພາະໂຄງການທີ່ເລືອກ
   const collBuckets = {};
   collected.filter((p) => sel.has(p.contracts?.project_id)).forEach((p) => {
-    const f = dstr(cut6From(p.pay_date));
+    const f = ym(p.pay_date);
     (collBuckets[f] = collBuckets[f] || {});
     collBuckets[f][p.currency] = (collBuckets[f][p.currency] || 0) + Number(p.amount_received || 0);
   });
-  const pastMonths = [-3, -2, -1].map((k) => { const d = monthAt(k); return { d, byC: collBuckets[dstr(d)] || {} }; });
+  const pastMonths = [-5, -4, -3, -2, -1, 0].map((k) => { const d = monthAt(k); return { d, byC: collBuckets[mkey(d)] || {} }; });
 
   // ສະແດງຈຳນວນ: ແຍກສະກຸນ ຫຼື ລວມແປງເປັນ curMode
   const showAmt = (byC) => {
@@ -143,7 +142,14 @@ function Dashboard() {
   const sumByC = (arr) => { const t = {}; arr.forEach(({ byC }) => CUR_ORDER.forEach((c) => { if (byC[c]) t[c] = (t[c] || 0) + byC[c]; })); return t; };
   const aheadTot = sumByC(aheadMonths);
   const pastTot = sumByC(pastMonths);
-  const MonthTable = ({ items, total, totColor }) => (
+
+  // ---- ສະຫຼຸບຍອດລວມ: ງວດຄ້າງຊຳລະ + ໃບມັດຈຳກາຍກຳນົດ (ຕາມໂຄງການທີ່ເລືອກ) ----
+  const instSel = overdueInst.filter((o) => sel.has(o.project_id));
+  const bkSel = overdueBk.filter((b) => sel.has(b.project_id));
+  const instByCur = {};   // ຍອດຄ້າງ ແຍກສະກຸນ
+  instSel.forEach((o) => { instByCur[o.currency] = (instByCur[o.currency] || 0) + Number(o.amount_outstanding || 0); });
+  const bkDepTot = bkSel.reduce((s, b) => s + Number(b.deposit_amount || 0), 0); // ເງິນມັດຈຳລວມ
+  const MonthTable = ({ items, total, totColor, totLabel = "ລວມ" }) => (
     <table className="w-full text-sm">
       <tbody>
         {items.map(({ d, byC }) => (
@@ -153,7 +159,7 @@ function Dashboard() {
           </tr>
         ))}
         <tr className="border-t-2 border-slate-200">
-          <td className="py-1.5 font-semibold text-navy">ລວມ 3 ເດືອນ</td>
+          <td className="py-1.5 font-semibold text-navy">{totLabel}</td>
           <td className={`py-1.5 text-right ${totColor}`}>{showAmt(total)}</td>
         </tr>
       </tbody>
@@ -211,18 +217,18 @@ function Dashboard() {
       {/* ຄາດຄະເນລາຍຮັບ 3 ເດືອນຂ້າງໜ້າ + ຜົນເກັບເງິນ 3 ເດືອນຜ່ານມາ */}
       <div className="grid gap-4 md:grid-cols-2 mb-6">
         <div className="card border-2 border-brand-amber/40 bg-amber-50/40">
-          <div className="font-bold text-navy mb-2">📅 ຄາດຄະເນລາຍຮັບ 3 ເດືອນຂ້າງໜ້າ
+          <div className="font-bold text-navy mb-2">📅 ຄາດຄະເນລາຍຮັບ 6 ເດືອນຂ້າງໜ້າ
             <span className="font-normal text-xs text-slate-500"> · ຈາກງວດຄາດຮັບ</span></div>
-          <MonthTable items={aheadMonths} total={aheadTot} totColor="text-brand-amber" />
+          <MonthTable items={aheadMonths} total={aheadTot} totColor="text-brand-amber" totLabel="ລວມ 6 ເດືອນ" />
         </div>
         <div className="card border-2 border-brand-green/30 bg-emerald-50/30">
-          <div className="font-bold text-navy mb-2">💰 ຜົນການເກັບເງິນ 3 ເດືອນຜ່ານມາ
+          <div className="font-bold text-navy mb-2">💰 ຜົນການເກັບເງິນ 6 ເດືອນ (ລວມເດືອນນີ້)
             <span className="font-normal text-xs text-slate-500"> · ຮັບຈິງ</span></div>
-          <MonthTable items={pastMonths} total={pastTot} totColor="text-brand-green" />
+          <MonthTable items={pastMonths} total={pastTot} totColor="text-brand-green" totLabel="ລວມ 6 ເດືອນ" />
         </div>
       </div>
       <p className="text-xs text-slate-400 -mt-4 mb-6">
-        * ຮອບເດືອນຕັດວັນທີ 6 · ຄາດຮັບ = ງວດທີ່ຍັງບໍ່ຈ່າຍຄົບ · {split ? "ແຍກຕາມສະກຸນ" : `ລວມເປັນ ${curMode} ໂດຍປະມານ`} · ຕາມໂຄງການທີ່ເລືອກ
+        * ຮອບເດືອນປະຕິທິນ (ວັນທີ 1–ທ້າຍເດືອນ) · ຄາດຮັບ = ງວດທີ່ຍັງບໍ່ຈ່າຍຄົບ · {split ? "ແຍກຕາມສະກຸນ" : `ລວມເປັນ ${curMode} ໂດຍປະມານ`} · ຕາມໂຄງການທີ່ເລືອກ
       </p>
 
       {/* card ຕໍ່ໂຄງການ — ໂຄງການປິດການຂາຍ/ປິດໂຄງການ ພັບເກັບໄວ້ລຸ່ມ */}
@@ -279,23 +285,37 @@ function Dashboard() {
       <div className="grid gap-4 xl:grid-cols-2">
         <div>
           <h3 className="font-bold text-navy mb-2">⚠️ ງວດຄ້າງຊຳລະ</h3>
+          {instSel.length > 0 && (
+            <div className="flex justify-between items-center bg-red-50/60 border border-red-100 rounded-lg px-3 py-2 mb-2 text-sm">
+              <span className="text-slate-600">ລວມ {instSel.length} ງວດຄ້າງ</span>
+              <span>{showAmt(instByCur)}</span>
+            </div>
+          )}
           <Table cols={["ສັນຍາ", "ລູກຄ້າ", "ຄົບກຳນົດ", "ຍອດຄ້າງ"]}
             empty="ບໍ່ມີງວດຄ້າງຊຳລະ 🎉"
-            rows={overdueInst.map((o) => [
+            rows={instSel.slice(0, 15).map((o) => [
               o.contract_no, o.full_name,
               <span key="d" className="text-brand-red">{fdate(o.due_date)}</span>,
               fmt(o.amount_outstanding),
             ])} />
+          {instSel.length > 15 && <p className="text-xs text-slate-400 mt-1">ສະແດງ 15 ຈາກ {instSel.length} ລາຍການ</p>}
         </div>
         <div>
           <h3 className="font-bold text-navy mb-2">📌 ໃບສັນຍາມັດຈຳກາຍກຳນົດເຮັດສັນຍາ</h3>
+          {bkSel.length > 0 && (
+            <div className="flex justify-between items-center bg-red-50/60 border border-red-100 rounded-lg px-3 py-2 mb-2 text-sm">
+              <span className="text-slate-600">ລວມ {bkSel.length} ໃບ ກາຍກຳນົດ</span>
+              <span className="font-bold text-navy">ມັດຈຳ {fmt(bkDepTot)}</span>
+            </div>
+          )}
           <Table cols={["ເລກທີ", "ລູກຄ້າ", "ຕອນ", "ກຳນົດ", "ກາຍ (ວັນ)"]}
             empty="ບໍ່ມີໃບສັນຍາມັດຈຳກາຍກຳນົດ"
-            rows={overdueBk.map((b) => [
+            rows={bkSel.slice(0, 15).map((b) => [
               b.booking_no, b.full_name, b.lot_code,
               <span key="d" className="text-brand-red">{fdate(b.contract_due_date)}</span>,
               b.days_overdue,
             ])} />
+          {bkSel.length > 15 && <p className="text-xs text-slate-400 mt-1">ສະແດງ 15 ຈາກ {bkSel.length} ລາຍການ</p>}
         </div>
       </div>
     </>
