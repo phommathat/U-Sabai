@@ -144,8 +144,6 @@ function Dashboard() {
   const pastTot = sumByC(pastMonths);
 
 
-
-  return (
     <>
       <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
         <h2 className="text-lg font-bold text-navy">{projectIds.length === projects.length ? "ພາບລວມທຸກໂຄງການ" : `ພາບລວມ ${projectIds.length} ໂຄງການ`}</h2>
