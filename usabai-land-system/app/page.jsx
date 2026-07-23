@@ -143,28 +143,7 @@ function Dashboard() {
   const aheadTot = sumByC(aheadMonths);
   const pastTot = sumByC(pastMonths);
 
-  // ---- ສະຫຼຸບຍອດລວມ: ງວດຄ້າງຊຳລະ + ໃບມັດຈຳກາຍກຳນົດ (ຕາມໂຄງການທີ່ເລືອກ) ----
-  const instSel = overdueInst.filter((o) => sel.has(o.project_id));
-  const bkSel = overdueBk.filter((b) => sel.has(b.project_id));
-  const instByCur = {};   // ຍອດຄ້າງ ແຍກສະກຸນ
-  instSel.forEach((o) => { instByCur[o.currency] = (instByCur[o.currency] || 0) + Number(o.amount_outstanding || 0); });
-  const bkDepTot = bkSel.reduce((s, b) => s + Number(b.deposit_amount || 0), 0); // ເງິນມັດຈຳລວມ
-  const MonthTable = ({ items, total, totColor, totLabel = "ລວມ" }) => (
-    <table className="w-full text-sm">
-      <tbody>
-        {items.map(({ d, byC }) => (
-          <tr key={+d} className="border-b border-slate-100 last:border-0">
-            <td className="py-1.5 text-slate-600">{monLabel(d)}</td>
-            <td className="py-1.5 text-right">{showAmt(byC)}</td>
-          </tr>
-        ))}
-        <tr className="border-t-2 border-slate-200">
-          <td className="py-1.5 font-semibold text-navy">{totLabel}</td>
-          <td className={`py-1.5 text-right ${totColor}`}>{showAmt(total)}</td>
-        </tr>
-      </tbody>
-    </table>
-  );
+
 
   return (
     <>
