@@ -28,7 +28,7 @@ function Payments() {
   const load = async () => {
     if (!projectIds.length) return;
     const { data: cons } = await supabase.from("contracts")
-      .select("id,contract_no,currency,sale_price,sign_date,project_id, customers(full_name,tel), lots(code)").in("project_id", projectIds);
+      .select("id,contract_no,currency,sale_price,sign_date,pay_type,project_id, customers(full_name,tel), lots(code)").in("project_id", projectIds);
     setContracts(cons || []);
     const ids = (cons || []).map((c) => c.id);
     if (!ids.length) { setInst([]); setHist([]); setSoon([]); setPaidFull([]); return; }
@@ -101,20 +101,20 @@ function Payments() {
     return li ? li.seq === 0 : false;
   };
   const inMonth = (d) => !!d && String(d).slice(0, 7) === month;
-  const monthPays = hist.filter((p) => inMonth(p.pay_date) && !isDownType(p));   // ສະເພາະເງິນງວດ
-  const newSalePays = hist.filter((p) => inMonth(p.pay_date) && isDownType(p));  // ເງິນຈອງ/ດາວ ຂາຍໃໝ່
+  const isCashC = (cid) => cmap[cid]?.pay_type === "cash"; // ສັນຍາຈ່າຍສົດ
+  // ຂາຍໃໝ່+ຈ່າຍສົດ = ເງິນຈອງ/ດາວ ຫຼື ເງິນຈາກສັນຍາຈ່າຍສົດ · ເງິນງວດ = ທີ່ເຫຼືອ
+  const newSalePays = hist.filter((p) => inMonth(p.pay_date) && (isDownType(p) || isCashC(p.contract_id)));
+  const monthPays = hist.filter((p) => inMonth(p.pay_date) && !isDownType(p) && !isCashC(p.contract_id));
   const sumByCur = (rows, amt, cur) => {
     const o = {};
     rows.forEach((r) => { const c = cur(r) || "LAK"; o[c] = (o[c] || 0) + Number(amt(r) || 0); });
     return o;
   };
-  // ຮັບຕົວຈິງ vs ຄາດຄະເນ (ງວດ seq>0 ທີ່ຄົບກຳນົດພາຍໃນເດືອນ) — ແຍກຕາມສະກຸນເງິນ
+  // ຮັບຕົວຈິງ vs ຄາດຄະເນ (ງວດ seq>0 ຄົບກຳນົດພາຍໃນເດືອນ, ບໍ່ນັບສັນຍາຈ່າຍສົດ) — ແຍກຕາມສະກຸນ
   const actByCur = sumByCur(monthPays, (p) => p.amount_received, (p) => p.currency);
-  const expByCur = sumByCur(inst.filter((i) => i.seq !== 0 && inMonth(i.due_date)),
+  const expByCur = sumByCur(inst.filter((i) => i.seq !== 0 && inMonth(i.due_date) && !isCashC(i.contract_id)),
     (i) => i.amount_due, (i) => cmap[i.contract_id]?.currency);
-  const newContracts = contracts.filter((c) => inMonth(c.sign_date));
   const newSaleByCur = sumByCur(newSalePays, (p) => p.amount_received, (p) => p.currency);
-  const newValByCur = sumByCur(newContracts, (c) => c.sale_price, (c) => c.currency);
   const monthCurs = [...new Set([...Object.keys(expByCur), ...Object.keys(actByCur)])];
 
   // ຍອດຄ້າງ "ຫຼັງ" ແຕ່ລະການຮັບເງິນ (ສະສົມຕາມລຳດັບເວລາ) — ໃຊ້ໃນຖັນຍອດຄ້າງ + ໃບມອບຮັບເງິນ
@@ -220,14 +220,12 @@ function Payments() {
 
   // ---- ແບ່ງໜ້າ 50 ລາຍການ/ໜ້າ (ຕໍ່ tab) — reset ໜ້າ 1 ເມື່ອປ່ຽນໂຄງການ/tab ----
   const pgMonth = usePager(monthPays, [projectIds, tab, month]);
-  const pgNew = usePager(newSalePays, [projectIds, tab, month]);
   const pgSoon = usePager(soonLeft, [projectIds, tab]);
   const pgPaid = usePager(paidFull, [projectIds, tab]);
   const pgInst = usePager(filtered, [projectIds, tab]);
 
   const TABS = [
     ["month", "ການຮັບເງິນງວດປະຈຳເດືອນ"],
-    ["newsale", `ຂາຍດິນຕອນໃໝ່${newContracts.length ? ` (${newContracts.length})` : ""}`],
     ["soon", `ໃກ້ຮອດກຳນົດ 6 ວັນ${soonLeft.length ? ` (${soonLeft.length})` : ""}`],
     ["overdue", "ຄ້າງຊຳລະ"], ["paid100", "ຊຳລະຄົບ 100%"],
   ];
@@ -237,18 +235,20 @@ function Payments() {
       <div className="flex gap-2 items-center mb-4 flex-wrap">
         <h2 className="text-lg font-bold text-navy mr-auto">ການຊຳລະເງິນ</h2>
         {TABS.map(([k, l]) => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`px-3 py-1.5 rounded-full text-xs border ${tab === k ? "bg-navy text-white border-navy" : "bg-white border-slate-300"}`}>{l}</button>
+          <span key={k} className="flex items-center gap-2">
+            <button onClick={() => setTab(k)}
+              className={`px-3 py-1.5 rounded-full text-xs border ${tab === k ? "bg-navy text-white border-navy" : "bg-white border-slate-300"}`}>{l}</button>
+            {k === "month" && (
+              <input type="month" className="inp !w-auto !py-1.5 text-xs" value={month} onChange={(e) => setMonth(e.target.value)} />
+            )}
+          </span>
         ))}
-        {["month", "newsale"].includes(tab) && (
-          <input type="month" className="inp !w-auto !py-1.5 text-xs" value={month} onChange={(e) => setMonth(e.target.value)} />
-        )}
         <button className="btn-p" onClick={() => setAddForm({ pay_date: today, channel: "ເງິນສົດ", currency: "LAK" })}>+ ເພີ່ມການຊຳລະງວດ</button>
       </div>
 
-      {/* ---- ຄວາມຄືບໜ້າຮັບເງິນງວດ: ຕົວຈິງ vs ຄາດຄະເນ (ແຍກຕາມສະກຸນ) ---- */}
+      {/* ---- ຄວາມຄືບໜ້າຮັບເງິນງວດ: ຕົວຈິງ vs ຄາດຄະເນ (ແຍກຕາມສະກຸນ) + ຂາຍໃໝ່/ຈ່າຍສົດ ---- */}
       {tab === "month" && (
-        <div className="grid gap-3 md:grid-cols-2 mb-4">
+        <div className="grid gap-3 md:grid-cols-3 mb-4">
           {(monthCurs.length ? monthCurs : ["LAK"]).map((c) => {
             const act = actByCur[c] || 0, exp = expByCur[c] || 0;
             const pct = exp > 0 ? Math.min(100, Math.round((act / exp) * 100)) : (act > 0 ? 100 : 0);
@@ -268,6 +268,16 @@ function Payments() {
               </div>
             );
           })}
+          {/* ຍອດລວມ ຂາຍດິນຕອນໃໝ່ + ສັນຍາຈ່າຍສົດ (ຮັບຕົວຈິງພາຍໃນເດືອນ, ທັງ 3 ສະກຸນ) */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4">
+            <div className="font-semibold text-navy text-sm mb-2">ຂາຍດິນຕອນໃໝ່ + ສັນຍາຈ່າຍສົດ</div>
+            {["LAK", "THB", "USD"].map((c) => (
+              <div key={c} className="flex justify-between text-xs mt-1">
+                <span className="text-slate-500">{c}</span>
+                <b className={newSaleByCur[c] ? "text-brand-green" : "text-slate-400"}>{newSaleByCur[c] ? fmt(newSaleByCur[c], c) : "—"}</b>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -293,43 +303,6 @@ function Payments() {
           })} />
       )}
       {tab === "month" && <Pager pg={pgMonth} />}
-
-      {/* ---- ລາຍຮັບຈາກການຂາຍດິນຕອນໃໝ່ພາຍໃນເດືອນ (ເງິນຈອງ/ມັດຈຳ/ດາວ) ---- */}
-      {tab === "newsale" && (
-        <>
-          <div className="grid gap-3 md:grid-cols-3 mb-4">
-            <div className="bg-white border border-slate-200 rounded-xl p-4">
-              <div className="text-xs text-slate-500 mb-1">ສັນຍາຂາຍໃໝ່ພາຍໃນເດືອນ</div>
-              <div className="text-2xl font-bold text-navy">{newContracts.length} <span className="text-sm font-normal">ສັນຍາ</span></div>
-            </div>
-            <div className="bg-white border border-slate-200 rounded-xl p-4">
-              <div className="text-xs text-slate-500 mb-1">ມູນຄ່າຂາຍລວມ (ສັນຍາໃໝ່)</div>
-              {Object.keys(newValByCur).length
-                ? Object.entries(newValByCur).map(([c, v]) => <div key={c} className="font-bold text-navy">{fmt(v, c)}</div>)
-                : <div className="font-bold text-slate-400">—</div>}
-            </div>
-            <div className="bg-white border border-slate-200 rounded-xl p-4">
-              <div className="text-xs text-slate-500 mb-1">ເງິນຈອງ/ດາວ ຮັບຕົວຈິງພາຍໃນເດືອນ</div>
-              {Object.keys(newSaleByCur).length
-                ? Object.entries(newSaleByCur).map(([c, v]) => <div key={c} className="font-bold text-brand-green">{fmt(v, c)}</div>)
-                : <div className="font-bold text-slate-400">—</div>}
-            </div>
-          </div>
-          <Table cols={["ຊື່ລູກຄ້າ", "ຈຳນວນເງິນ", "ປະເພດ", "ເລກທີສັນຍາ", "ຕອນດິນ", "ວັນທີຮັບເງິນ", ""]}
-            empty="ຍັງບໍ່ມີເງິນຈອງ/ດາວ ຈາກການຂາຍໃໝ່ໃນເດືອນນີ້"
-            rows={pgNew.rows.map((p) => [
-              custBtn(p.contract_id, cmap[p.contract_id]?.customers?.full_name),
-              <b key="a" className="text-brand-green">{fmt(p.amount_received, p.currency)}</b>,
-              (p.note || "").includes("ເງິນມັດຈຳ") ? "ມັດຈຳມື້ຈອງ" : "ດາວ/ຈ່າຍກ່ອນ",
-              cmap[p.contract_id]?.contract_no, cmap[p.contract_id]?.lots?.code || "—", fdate(p.pay_date),
-              <span key="pr" className="flex gap-1">
-                <a className="btn-o !py-1 !px-2 text-sm" title="ພິມໃບມອບຮັບເງິນ" href={`/print/receipt/${p.id}`} target="_blank">🖨</a>
-                <a className="btn-o !py-1 !px-2 text-sm" title="ບັນທຶກເປັນ PDF ສົ່ງລູກຄ້າ" href={`/print/receipt/${p.id}?auto=1`} target="_blank">📄</a>
-              </span>,
-            ])} />
-        </>
-      )}
-      {tab === "newsale" && <Pager pg={pgNew} />}
 
       {tab === "soon" && (
         <Table cols={["ສັນຍາ", "ລູກຄ້າ", "ເບີໂທ", "ງວດ", "ຄົບກຳນົດ", "ອີກ (ວັນ)", "ຍອດຄ້າງງວດ", ""]}
