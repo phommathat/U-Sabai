@@ -378,14 +378,15 @@ export default function PrintPage() {
           <div>----------------00----------------</div>
         </div>
 
-        <div className="flex justify-between items-start mt-2 mb-4">
-          <div className="flex items-center gap-3">
-            <img src="/logo-mark.png" alt="U-Sabai" className="w-16 h-16" />
-            <div className="text-[16px]">
-              <div className="font-bold">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
-            </div>
+     <div className="relative">
+          <div className="c-logo-wrap absolute left-0 -top-1 w-28 text-center">
+            <img src="/logo-mark.png" alt="U-Sabai" className="c-logo w-28 h-28 object-contain mx-auto" />
+            <div className="co-name text-[16px] font-bold leading-snug whitespace-nowrap">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
           </div>
-          <div className="text-center text-2xl font-bold mt-2">ໃບມອບຮັບເງິນ</div>
+          <LaoHeader no={d.contract_no} date={d.sign_date} />
+        </div>
+        <div className="c-title text-center text-2xl font-bold my-3 underline underline-offset-4">ສັນຍາຊື້-ຂາຍດິນ</div>
+
           <div className="text-[13px] mt-1">
             <div><b>No.</b> : <Dot v={d.receipt_no} w="110px" /></div>
             <div className="mt-1">ວັນທີ: <Dot v={pd[0]} w="34px" />/<Dot v={pd[1]} w="34px" />/<Dot v={pd[2]} w="48px" /></div>
