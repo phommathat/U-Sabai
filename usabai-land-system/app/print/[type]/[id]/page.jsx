@@ -51,6 +51,7 @@ export default function PrintPage() {
   const [d, setD] = useState(null);
   const [seller, setSeller] = useState(null); // ຜູ້ຂາຍ = profile ຜູ້ໃຊ້ທີ່ login
   const [rem, setRem] = useState(null); // ຍອດເຫຼືອຫຼັງການຊຳລະຄັ້ງນີ້ (ໃບມອບຮັບເງິນ)
+  const [rcptRows, setRcptRows] = useState([]); // ແຖວຕາຕະລາງໃບມອບຮັບເງິນ (ດາວ+ງວດ ພ້ອມປະຫວັດຊຳລະ)
   const [firstPay, setFirstPay] = useState(0); // ເງິນຮັບຄັ້ງທຳອິດ (fallback ເງິນດາວ/ງວດ 1 ຂອງສັນຍາ import)
   const [err, setErr] = useState("");
 
@@ -85,13 +86,26 @@ export default function PrintPage() {
           setFirstPay(Number(ps[0].amount_received || 0));
         }
       }
-      // ໃບມອບຮັບເງິນ: ຄິດຍອດເຫຼືອ ຫຼັງການຊຳລະຄັ້ງນີ້ (ສະສົມຕາມລຳດັບເວລາ)
+      // ໃບມອບຮັບເງິນ: ດຶງປະຫວັດການຊຳລະທັງໝົດ → ໃສ່ຕາຕະລາງ ຕາມ ດາວ(seq0) + ງວດ1..N
       if (type === "receipt" && data?.contract_id) {
+        const nInst = Number(data.contracts?.n_installments || 0);
+        const sale = Number(data.contracts?.sale_price || 0);
         const { data: ps } = await supabase.from("payments")
-          .select("id,amount_received,pay_date,created_at").eq("contract_id", data.contract_id);
+          .select("amount_received, installment_id, installments(seq)").eq("contract_id", data.contract_id);
+        // ລວມເງິນຮັບຕາມ seq (ຈ່າຍນອກງວດ / booking_fee → ນັບເປັນ ດາວ seq 0)
+        const paidBySeq = {};
+        (ps || []).forEach((p) => {
+          const s = p.installments?.seq ?? 0;
+          paidBySeq[s] = (paidBySeq[s] || 0) + Number(p.amount_received || 0);
+        });
         let cum = 0;
-        (ps || []).sort((a, b) => (a.pay_date + a.created_at).localeCompare(b.pay_date + b.created_at))
-          .forEach((p) => { cum += Number(p.amount_received || 0); if (p.id === data.id) setRem(Number(data.contracts?.sale_price || 0) - cum); });
+        const rws = [];
+        for (let s = 0; s <= nInst; s++) {
+          const paid = paidBySeq[s] || 0;
+          cum += paid;
+          rws.push({ label: s === 0 ? "ດາວ" : `ງວດ${s}`, paid, remaining: paid > 0 ? Math.max(sale - cum, 0) : null });
+        }
+        setRcptRows(rws);
       }
     })();
   }, [type, id]);
@@ -366,24 +380,26 @@ export default function PrintPage() {
     const cash = (d.channel || "").includes("ສົດ");
     // ຜູ້ຂາຍ = ຜູ້ອອກສັນຍາສະບັບຕົ້ນ (contracts.sales_person) · ຜູ້ຮັບເງິນ = ຜູ້ໃຊ້ລະບົບປັດຈຸບັນ
     const sellerName = c.sales_person || seller?.full_name;
-    // ຈຳນວນແຖວຕາຕະລາງ = ເງິນດາວ + ຈຳນວນງວດທີ່ລູກຄ້າຊຳລະ · ແບ່ງເປັນ 2 ຝັ່ງ (ດາວ,ງວດ1.. | ງວດ..)
-    const nInst = Number(c.n_installments || 0);
-    const labels = ["ດາວ", ...Array.from({ length: nInst }, (_, i) => `ງວດ${i + 1}`)];
-    const half = Math.ceil(labels.length / 2);
-    const rows = Array.from({ length: half }, (_, i) => ({ L: labels[i] ?? "", R: labels[i + half] ?? "" }));
+    const cur = c.currency;
+    // ແຖວ = ດາວ + ງວດ (ຈາກ rcptRows ທີ່ດຶງປະຫວັດ) · ແບ່ງ 2 ຝັ່ງ (ດາວ,ງວດ1.. | ງວດ..)
+    const src = rcptRows.length ? rcptRows : ["ດາວ", ...Array.from({ length: Number(c.n_installments || 0) }, (_, i) => `ງວດ${i + 1}`)].map((l) => ({ label: l, paid: 0, remaining: null }));
+    const half = Math.max(1, Math.ceil(src.length / 2));
+    const rows = Array.from({ length: half }, (_, i) => ({ L: src[i] || null, R: src[i + half] || null }));
+    // ຄິດຄວາມສູງແຖວ ໃຫ້ພໍດີເຕັມ A4 (36 ງວດ = 19 ແຖວ ≈ 9mm) · ໜ້ອຍງວດ = ແຖວສູງຂຶ້ນ (ສູງສຸດ 12mm)
+    const rowMM = Math.max(8, Math.min(12, Math.floor(176 / half)));
     return (
-      <div className="rcpt-sheet max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[14px] leading-[1.7]">
+      <div className="rcpt-sheet max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[15px] leading-[1.8]">
         <style>{`
           @media print {
             @page { size: A4 portrait; margin: 10mm 12mm; }
-            .rcpt-sheet { font-size: 12px !important; line-height: 1.5 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
-            .rcpt-sheet .r-title { font-size: 18px !important; margin: 5px 0 !important; }
+            .rcpt-sheet { font-size: 13.5px !important; line-height: 1.6 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
+            .rcpt-sheet .r-title { font-size: 19px !important; margin: 5px 0 !important; }
             .rcpt-sheet .co-name { font-size: 11px !important; }
             .rcpt-sheet .r-logo { width: 26mm !important; height: 26mm !important; }
-            .rcpt-sheet .r-info { font-size: 11px !important; }
-            .rcpt-sheet .rcpt-tbl { font-size: 11px !important; }
-            .rcpt-sheet .rcpt-tbl td { padding: 2px 4px !important; }
-            .rcpt-sheet .r-sig { margin-top: 34px !important; }
+            .rcpt-sheet .r-info { font-size: 13px !important; }
+            .rcpt-sheet .rcpt-tbl { font-size: 13px !important; }
+            .rcpt-sheet .rcpt-tbl td { padding: 3px 5px !important; }
+            .rcpt-sheet .r-sig { margin-top: 30px !important; }
           }
         `}</style>
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
@@ -410,26 +426,26 @@ export default function PrintPage() {
           </div>
         </div>
 
-        <table className="rcpt-tbl w-full border-collapse border-2 border-black mt-3 text-center text-[13px]">
+        <table className="rcpt-tbl w-full border-collapse border-2 border-black mt-3 text-center text-[14px]">
           <thead>
             <tr className="font-bold">
-              <td className="border-2 border-black p-2 w-16">ລ/ດ</td>
+              <td className="border-2 border-black p-2 w-14">ລ/ດ</td>
               <td className="border-2 border-black p-2">ເງິນຊຳລະຄັ້ງນີ້</td>
               <td className="border-2 border-black p-2">ຍອດທີ່ຍັງເຫຼືອ</td>
-              <td className="border-2 border-black p-2 w-16">ລ/ດ</td>
+              <td className="border-2 border-black p-2 w-14">ລ/ດ</td>
               <td className="border-2 border-black p-2">ເງິນຊຳລະຄັ້ງນີ້</td>
               <td className="border-2 border-black p-2">ຍອດທີ່ຍັງເຫຼືອ</td>
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={i}>
-                <td className="border-2 border-black p-2 font-bold">{r.L}</td>
-                <td className="border-2 border-black p-2"></td>
-                <td className="border-2 border-black p-2"></td>
-                <td className="border-2 border-black p-2 font-bold">{r.R}</td>
-                <td className="border-2 border-black p-2"></td>
-                <td className="border-2 border-black p-2"></td>
+              <tr key={i} style={{ height: rowMM + "mm" }}>
+                <td className="border-2 border-black px-2 font-bold">{r.L?.label ?? ""}</td>
+                <td className="border-2 border-black px-2 font-bold">{r.L?.paid ? fmt(r.L.paid, cur) : ""}</td>
+                <td className="border-2 border-black px-2">{r.L?.remaining != null ? (r.L.remaining > 0 ? fmt(r.L.remaining, cur) : "ຄົບແລ້ວ") : ""}</td>
+                <td className="border-2 border-black px-2 font-bold">{r.R?.label ?? ""}</td>
+                <td className="border-2 border-black px-2 font-bold">{r.R?.paid ? fmt(r.R.paid, cur) : ""}</td>
+                <td className="border-2 border-black px-2">{r.R?.remaining != null ? (r.R.remaining > 0 ? fmt(r.R.remaining, cur) : "ຄົບແລ້ວ") : ""}</td>
               </tr>
             ))}
           </tbody>
