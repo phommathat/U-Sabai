@@ -385,8 +385,8 @@ export default function PrintPage() {
     const src = rcptRows.length ? rcptRows : ["ດາວ", ...Array.from({ length: Number(c.n_installments || 0) }, (_, i) => `ງວດ${i + 1}`)].map((l) => ({ label: l, paid: 0, remaining: null }));
     const half = Math.max(1, Math.ceil(src.length / 2));
     const rows = Array.from({ length: half }, (_, i) => ({ L: src[i] || null, R: src[i + half] || null }));
-    // ຄິດຄວາມສູງແຖວ ໃຫ້ພໍດີເຕັມ A4 (36 ງວດ = 19 ແຖວ ≈ 9mm) · ໜ້ອຍງວດ = ແຖວສູງຂຶ້ນ (ສູງສຸດ 12mm)
-    const rowMM = Math.max(8, Math.min(12, Math.floor(176 / half)));
+    // ຄິດຄວາມສູງແຖວ ໃຫ້ພໍດີເຕັມ A4 (36 ງວດ = 19 ແຖວ ≈ 8mm, ~152mm) · ໜ້ອຍງວດ = ແຖວສູງຂຶ້ນ (ສູງສຸດ 11mm)
+    const rowMM = Math.max(8, Math.min(11, Math.floor(160 / half)));
     return (
       <div className="rcpt-sheet max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[15px] leading-[1.8]">
         <style>{`
@@ -397,9 +397,9 @@ export default function PrintPage() {
             .rcpt-sheet .co-name { font-size: 11px !important; }
             .rcpt-sheet .r-logo { width: 26mm !important; height: 26mm !important; }
             .rcpt-sheet .r-info { font-size: 13px !important; }
-            .rcpt-sheet .rcpt-tbl { font-size: 13px !important; }
-            .rcpt-sheet .rcpt-tbl td { padding: 3px 5px !important; }
-            .rcpt-sheet .r-sig { margin-top: 30px !important; }
+            .rcpt-sheet .rcpt-tbl { font-size: 12.5px !important; }
+            .rcpt-sheet .rcpt-tbl td { padding: 1px 5px !important; line-height: 1.25 !important; }
+            .rcpt-sheet .r-sig { margin-top: 24px !important; }
           }
         `}</style>
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
