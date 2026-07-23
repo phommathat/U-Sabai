@@ -165,14 +165,14 @@ export default function PrintPage() {
             .contract-sheet .c-wit { margin-top: 34px !important; }
             .contract-sheet .c-logo-wrap { width: 26mm !important; }
             .contract-sheet .c-logo { width: 26mm !important; height: 26mm !important; }
-            .contract-sheet .co-name { font-size: 8.5px !important; }
+            .contract-sheet .co-name { font-size: 11px !important; }
           }
         `}</style>
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
         <div className="relative">
           <div className="c-logo-wrap absolute left-0 -top-1 w-28 text-center">
             <img src="/logo-mark.png" alt="U-Sabai" className="c-logo w-28 h-28 object-contain mx-auto" />
-            <div className="co-name text-[11px] font-bold leading-snug">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
+            <div className="co-name text-[11px] font-bold leading-snug whitespace-nowrap">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
           </div>
           <LaoHeader no={d.contract_no} date={d.sign_date} />
         </div>
@@ -288,14 +288,14 @@ export default function PrintPage() {
             .dep-sheet .d-wit { margin-top: 40px !important; }
             .dep-sheet .d-logo-wrap { width: 26mm !important; }
             .dep-sheet .d-logo { width: 26mm !important; height: 26mm !important; }
-            .dep-sheet .co-name { font-size: 8.5px !important; }
+            .dep-sheet .co-name { font-size: 11px !important; }
           }
         `}</style>
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
         <div className="relative">
           <div className="d-logo-wrap absolute left-0 -top-1 w-28 text-center">
             <img src="/logo-mark.png" alt="U-Sabai" className="d-logo w-28 h-28 object-contain mx-auto" />
-            <div className="co-name text-[11px] font-bold leading-snug">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
+            <div className="co-name text-[11px] font-bold leading-snug whitespace-nowrap">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
           </div>
           <LaoHeader no={d.booking_no} date={d.booking_date} />
         </div>
@@ -475,7 +475,7 @@ export default function PrintPage() {
             .bk-sheet .b-title { font-size: 18px !important; margin: 8px 0 !important; }
             .bk-sheet .b-logo-wrap { width: 26mm !important; }
             .bk-sheet .b-logo { width: 26mm !important; height: 26mm !important; }
-            .bk-sheet .co-name { font-size: 8.5px !important; }
+            .bk-sheet .co-name { font-size: 11px !important; }
             .bk-sheet .b-sig { margin-top: 60px !important; }
             .bk-sheet .sig-gap { margin-top: 72px !important; }
           }
@@ -484,7 +484,7 @@ export default function PrintPage() {
         <div className="relative">
           <div className="b-logo-wrap absolute left-0 -top-1 w-28 text-center">
             <img src="/logo-mark.png" alt="U-Sabai" className="b-logo w-28 h-28 object-contain mx-auto" />
-            <div className="co-name text-[11px] font-bold leading-snug">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
+            <div className="co-name text-[11px] font-bold leading-snug whitespace-nowrap">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
           </div>
           <LaoHeader no={d.booking_no} date={d.booking_date} />
         </div>
