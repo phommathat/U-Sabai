@@ -11,7 +11,7 @@ const NAV = [
   ["/", "📊", "ພາບລວມ", "overview"],
   ["/lots", "🗺️", "ຜັງຕອນດິນ", "lots"],
   ["/customers", "👥", "ລູກຄ້າ", "customers"],
-  ["/bookings", "📌", "ການຈອງ", "bookings"],
+  ["/bookings", "📌", "ໃບສັນຍາມັດຈຳ", "bookings"],
   ["/contracts", "📄", "ສັນຍາຂາຍ", "contracts"],
   ["/payments", "💰", "ການຊຳລະເງິນ", "payments"],
   ["/deeds", "📜", "ໃບຕາດິນ", "deeds"],
@@ -41,13 +41,13 @@ export default function Shell({ children }) {
     if (!session) return;
     // ຂໍ້ມູນພະນັກງານທີ່ login — ໃຊ້ດຶງຊື່ພະນັກງານຂາຍໃສ່ໃບຈອງ/ສັນຍາ auto
     // ບັນຊີໃໝ່ (admin ສ້າງໃນ Supabase Dashboard): login ຄັ້ງທຳອິດ ສ້າງ profile ອັດຕະໂນມັດ
-    supabase.from("profiles").select("full_name,role,tel,position").eq("id", session.user.id).maybeSingle()
+    supabase.from("profiles").select("id,full_name,role,tel,position").eq("id", session.user.id).maybeSingle()
       .then(async ({ data }) => {
         if (data) return setProfile(data);
         const { data: np } = await supabase.from("profiles")
           .insert({ id: session.user.id, full_name: session.user.email.split("@")[0], role: "sales" })
           .select().single();
-        setProfile(np || { full_name: session.user.email, role: "sales" });
+        setProfile(np || { id: session.user.id, full_name: session.user.email, role: "sales" });
       });
     supabase.from("projects").select("id,code,name,status").order("code").then(({ data }) => {
       setProjects(data || []);
