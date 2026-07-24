@@ -13,7 +13,8 @@ const MoneyInput = ({ value, onChange, ...props }) => (
 );
 
 function Payments() {
-  const { projectIds, projects } = useApp();
+  const { projectIds, projects, profile } = useApp();
+  const [users, setUsers] = useState({}); // id → ຊື່ຜູ້ໃຊ້ລະບົບ (ສະແດງຜູ້ຮັບເງິນ)
   const [inst, setInst] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [hist, setHist] = useState([]);
@@ -47,7 +48,7 @@ function Payments() {
       .order("due_date", { ascending: true, nullsFirst: false }));
     setInst(ins);
     const pays = await pageAll(() => supabase.from("payments")
-      .select("id,receipt_no,pay_date,amount_received,currency,channel,note,contract_id,installment_id,created_at")
+      .select("id,receipt_no,pay_date,amount_received,currency,channel,note,contract_id,installment_id,created_at,created_by")
       .in("contract_id", ids).neq("pay_date", "1900-01-01")
       .order("pay_date", { ascending: false }));
     setHist(pays);
@@ -55,6 +56,9 @@ function Payments() {
       .order("due_date").then(({ data }) => setSoon(data || []));
     supabase.from("v_contracts_paid_full").select("*").in("project_id", projectIds)
       .order("contract_no").then(({ data }) => setPaidFull(data || []));
+    // ລາຍຊື່ຜູ້ໃຊ້ລະບົບ → ສະແດງວ່າໃຜເປັນຜູ້ຮັບເງິນແຕ່ລະລາຍການ
+    supabase.from("profiles").select("id,full_name")
+      .then(({ data }) => setUsers(Object.fromEntries((data || []).map((u) => [u.id, u.full_name]))));
   };
   useEffect(() => { load(); }, [projectIds]);
 
@@ -148,6 +152,7 @@ function Payments() {
       contract_id: form.contract_id, installment_id: form.installment_id,
       pay_date: form.pay_date, amount_received: form.amount_received,
       currency: form.currency, channel: form.channel, receipt_no: receiptNo, note: form.note || null,
+      created_by: profile?.id || null, // ຜູ້ຮັບເງິນ = ຜູ້ໃຊ້ລະບົບທີ່ບັນທຶກ
     });
     if (error) return alert("ຜິດພາດ: " + error.message);
     setForm(null); load();
@@ -186,6 +191,7 @@ function Payments() {
       contract_id: addForm.contract_id, installment_id: addForm.nextInst?.id || null,
       pay_date: addForm.pay_date, amount_received: addForm.amount_received,
       currency: addForm.currency, channel: addForm.channel, receipt_no: receiptNo,
+      created_by: profile?.id || null, // ຜູ້ຮັບເງິນ = ຜູ້ໃຊ້ລະບົບທີ່ເພີ່ມການຊຳລະງວດ
     });
     if (error) return alert("ຜິດພາດ: " + error.message);
     setAddForm(null); load();
@@ -282,7 +288,7 @@ function Payments() {
       )}
 
       {tab === "month" && (
-        <Table cols={["ຊື່ລູກຄ້າ", "ຈຳນວນເງິນ", "ຍອດຄ້າງ", "ງວດ", "ເລກທີສັນຍາ", "ວັນທີຮັບເງິນ", "ໝາຍເຫດ", ""]}
+        <Table cols={["ຊື່ລູກຄ້າ", "ຈຳນວນເງິນ", "ຍອດຄ້າງ", "ງວດ", "ເລກທີສັນຍາ", "ວັນທີຮັບເງິນ", "ຜູ້ຮັບເງິນ", "ໝາຍເຫດ", ""]}
           empty="ຍັງບໍ່ມີການຮັບເງິນງວດໃນເດືອນນີ້"
           rows={pgMonth.rows.map((p) => {
             const li = p.installment_id ? instMap[p.installment_id] : null;
@@ -294,6 +300,7 @@ function Payments() {
               : <span key="r" className="text-brand-green">ຄົບແລ້ວ ✓</span>,
             isDown(p) ? "ດາວ" : li ? `ງວດ ${li.seq}` : (p.note?.match(/ງວດ\s*\d+[^·]*/)?.[0]?.trim() || "—"),
             cmap[p.contract_id]?.contract_no, fdate(p.pay_date),
+            users[p.created_by] || "—",
             punctual(p),
             <span key="pr" className="flex gap-1">
               <a className="btn-o !py-1 !px-2 text-sm" title="ພິມໃບມອບຮັບເງິນ" href={`/print/receipt/${p.id}`} target="_blank">🖨</a>
@@ -359,7 +366,7 @@ function Payments() {
             </div>
             <div>
               <div className="font-semibold text-navy mb-1">ການຮັບເງິນ ({dPays.length})</div>
-              <Table cols={["ວັນທີຈ່າຍ", "ງວດ", "ວັນກຳນົດຈ່າຍ", "ຈຳນວນ", "ຍອດຄ້າງຫຼັງຈ່າຍ", "ໝາຍເຫດ", ""]}
+              <Table cols={["ວັນທີຈ່າຍ", "ງວດ", "ວັນກຳນົດຈ່າຍ", "ຈຳນວນ", "ຍອດຄ້າງຫຼັງຈ່າຍ", "ຜູ້ຮັບເງິນ", "ໝາຍເຫດ", ""]}
                 empty="ຍັງບໍ່ມີການຮັບເງິນ"
                 rows={dPays.map((p) => {
                   const li = p.installment_id ? instMap[p.installment_id] : null;
@@ -369,6 +376,7 @@ function Payments() {
                     li?.due_date ? fdate(li.due_date) : "—",
                     <b key="a">{fmt(p.amount_received, p.currency)}</b>,
                     remainAfter[p.id] > 0 ? fmt(remainAfter[p.id], dc.currency) : "ຄົບແລ້ວ ✓",
+                    users[p.created_by] || "—",
                     punctual(p),
                     <a key="pr" className="btn-o !py-0.5 !px-2 text-xs" href={`/print/receipt/${p.id}`} target="_blank">🖨</a>,
                   ];
