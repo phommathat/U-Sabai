@@ -49,7 +49,8 @@ const LaoHeader = ({ no, date }) => {
 export default function PrintPage() {
   const { type, id } = useParams();
   const [d, setD] = useState(null);
-  const [seller, setSeller] = useState(null); // ຜູ້ຂາຍ = profile ຜູ້ໃຊ້ທີ່ login
+  const [seller, setSeller] = useState(null); // profile ຜູ້ໃຊ້ທີ່ login (fallback)
+  const [creators, setCreators] = useState({}); // id → ຊື່ຜູ້ໃຊ້ລະບົບທີ່ອອກເອກະສານ (created_by)
   const [rem, setRem] = useState(null); // ຍອດເຫຼືອຫຼັງການຊຳລະຄັ້ງນີ້ (ໃບມອບຮັບເງິນ)
   const [rcptRows, setRcptRows] = useState([]); // ແຖວຕາຕະລາງໃບມອບຮັບເງິນ (ດາວ+ງວດ ພ້ອມປະຫວັດຊຳລະ)
   const [firstPay, setFirstPay] = useState(0); // ເງິນຮັບຄັ້ງທຳອິດ (fallback ເງິນດາວ/ງວດ 1 ຂອງສັນຍາ import)
@@ -64,7 +65,7 @@ export default function PrintPage() {
         .eq("id", s.session.user.id).maybeSingle().then(({ data: p }) => setSeller(p || {}));
       let q;
       if (type === "receipt")
-        q = supabase.from("payments").select("*, installments(seq), contracts(contract_no, currency, sale_price, n_installments, sales_person, customers(full_name, first_name, last_name, tel, village, district, province), lots(code, size_sqm), projects(name, village, district, province))").eq("id", id).single();
+        q = supabase.from("payments").select("*, installments(seq), contracts(contract_no, currency, sale_price, n_installments, sales_person, created_by, customers(full_name, first_name, last_name, tel, village, district, province), lots(code, size_sqm), projects(name, village, district, province))").eq("id", id).single();
       else if (type === "booking")
         q = supabase.from("bookings").select(`*, customers(${CUSTOMER_COLS}), lots(code, size_sqm, list_price, currency), projects(name, village, district, province)`).eq("id", id).single();
       else if (type === "deposit")
@@ -76,6 +77,12 @@ export default function PrintPage() {
       const { data, error } = await q;
       if (error) { setErr(error.message); return; }
       setD(data);
+      // ຊື່ຜູ້ອອກເອກະສານ (created_by): ສັນຍາ/ໃບມັດຈຳ = ຜູ້ສ້າງເອກະສານ · ໃບຮັບເງິນ = ຜູ້ສ້າງສັນຍາ + ຜູ້ບັນທຶກຮັບເງິນ
+      const cids = [...new Set([data?.created_by, data?.contracts?.created_by].filter(Boolean))];
+      if (cids.length) {
+        const { data: us } = await supabase.from("profiles").select("id,full_name").in("id", cids);
+        setCreators(Object.fromEntries((us || []).map((u) => [u.id, u.full_name])));
+      }
       // ສັນຍາ: ດຶງເງິນຮັບຄັ້ງທຳອິດ (ຕາມ pay_date) ເປັນ fallback ຂອງ "ງວດທີ 1 / ເງິນດາວ"
       // ເພາະສັນຍາ import ບໍ່ມີ down_payment ແລະ ບໍ່ມີງວດ 0 — ເງິນມື້ເຮັດສັນຍາຢູ່ໃນຕາຕະລາງ payments
       if (type === "contract" && data?.id) {
@@ -120,10 +127,12 @@ export default function PrintPage() {
   if (!d) return <div className="p-10 text-center text-slate-400">ກຳລັງໂຫຼດ...</div>;
 
   const today = fdate(new Date().toISOString());
-  // ແຖວ "ຜູ້ຂາຍ" — ຊື່+ທີ່ຢູ່ ຈາກ profile ຜູ້ໃຊ້ (ຫວ່າງ = ຈຸດໆໃຫ້ຂຽນມື)
-  const SellerLine = () => (
+  // ຊື່ຜູ້ຂາຍ = ຜູ້ໃຊ້ລະບົບທີ່ອອກເອກະສານ (created_by) → fallback sales_person → ຜູ້ໃຊ້ປັດຈຸບັນ
+  const docSellerName = creators[d?.created_by] || d?.sales_person || seller?.full_name;
+  // ແຖວ "ຜູ້ຂາຍ" — ຊື່ຜູ້ອອກເອກະສານ + ທີ່ຢູ່ບໍລິສັດ (ຫວ່າງ = ຈຸດໆໃຫ້ຂຽນມື)
+  const SellerLine = ({ name = docSellerName }) => (
     <div>
-      <b>ຜູ້ຂາຍ:</b> <Dot v={seller?.full_name} w="220px" cls="text-[1.15em] font-bold" />, ທີ່ຢູ່ບໍລິສັດ
+      <b>ຜູ້ຂາຍ:</b> <Dot v={name} w="220px" cls="text-[1.15em] font-bold" />, ທີ່ຢູ່ບໍລິສັດ
       ບ້ານ <Dot v={COMPANY.village} w="150px" />,
       ເມືອງ <Dot v={COMPANY.district} w="140px" />,
       ແຂວງ <Dot v={COMPANY.province} w="150px" />.
@@ -266,7 +275,7 @@ export default function PrintPage() {
 
         <div className="sig-area grid grid-cols-3 gap-6 mt-8 text-center font-bold">
           <div>ລາຍເຊັນຜູ້ຊື້<div className="sig-gap mt-28 font-bold text-[15px]">{cu.full_name}</div></div>
-          <div>ລາຍເຊັນຜູ້ຂາຍ<div className="sig-gap mt-28 font-bold text-[15px]">{seller?.full_name}</div></div>
+          <div>ລາຍເຊັນຜູ້ຂາຍ<div className="sig-gap mt-28 font-bold text-[15px]">{docSellerName}</div></div>
           <div>ນາຍບ້ານ, ບ້ານ <Dot w="110px" /><div className="sig-gap mt-28"></div></div>
         </div>
         <div className="c-wit grid grid-cols-2 gap-10 mt-12 text-[13px]">
@@ -358,7 +367,7 @@ export default function PrintPage() {
 
         <div className="grid grid-cols-2 gap-10 mt-8 text-center font-bold">
           <div>ລາຍເຊັນຜູ້ຊື້<div className="sig-gap mt-28 font-bold text-[15px]">{cu.full_name}</div></div>
-          <div>ລາຍເຊັນຜູ້ຂາຍ<div className="sig-gap mt-28 font-bold text-[15px]">{seller?.full_name}</div></div>
+          <div>ລາຍເຊັນຜູ້ຂາຍ<div className="sig-gap mt-28 font-bold text-[15px]">{docSellerName}</div></div>
         </div>
         <div className="d-wit grid grid-cols-2 gap-10 mt-16 text-[13px]">
           <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (1) <Dot w="170px" /><div className="sig-gap mt-16" /></div>
@@ -378,15 +387,17 @@ export default function PrintPage() {
     const cu = c.customers || {};
     const pr = c.projects || {};
     const cash = (d.channel || "").includes("ສົດ");
-    // ຜູ້ຂາຍ = ຜູ້ອອກສັນຍາສະບັບຕົ້ນ (contracts.sales_person) · ຜູ້ຮັບເງິນ = ຜູ້ໃຊ້ລະບົບປັດຈຸບັນ
-    const sellerName = c.sales_person || seller?.full_name;
+    // ຜູ້ຂາຍ = ຜູ້ໃຊ້ລະບົບທີ່ສ້າງສັນຍາ (contracts.created_by) · ຜູ້ຮັບເງິນ = ຜູ້ໃຊ້ລະບົບທີ່ບັນທຶກການຮັບເງິນ (payments.created_by)
+    const sellerName = creators[c.created_by] || c.sales_person || seller?.full_name;
+    const receiverName = creators[d.created_by] || seller?.full_name;
     const cur = c.currency;
     // ແຖວ = ດາວ + ງວດ (ຈາກ rcptRows ທີ່ດຶງປະຫວັດ) · ແບ່ງ 2 ຝັ່ງ (ດາວ,ງວດ1.. | ງວດ..)
     const src = rcptRows.length ? rcptRows : ["ດາວ", ...Array.from({ length: Number(c.n_installments || 0) }, (_, i) => `ງວດ${i + 1}`)].map((l) => ({ label: l, paid: 0, remaining: null }));
     const half = Math.max(1, Math.ceil(src.length / 2));
     const rows = Array.from({ length: half }, (_, i) => ({ L: src[i] || null, R: src[i + half] || null }));
-    // ຄິດຄວາມສູງແຖວ ໃຫ້ພໍດີ A4 ໜ້າດຽວ (budget ~140mm): 36ງວດ=19ແຖວ→7mm, 30→8mm, 24→10mm · ໜ້ອຍງວດ ສູງສຸດ 10mm
-    const rowMM = Math.max(7, Math.min(10, Math.floor(140 / half)));
+    // ຄິດຄວາມສູງແຖວ ໃຫ້ຕື່ມເຕັມ A4 ໜ້າດຽວ (budget ~149mm, ໃຊ້ 147 ເຫຼືອ buffer 2mm):
+    // 36ງວດ=19ແຖວ→7.74mm, 30=16→9.19mm, 24=13→11.31mm · ໜ້ອຍງວດ ສູງສຸດ 12mm
+    const rowMM = Math.min(12, 147 / half).toFixed(2);
     return (
       <div className="rcpt-sheet max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[15px] leading-[1.8]">
         <style>{`
@@ -462,7 +473,7 @@ export default function PrintPage() {
 
         <div className="r-sig grid grid-cols-3 gap-8 mt-8 text-center font-bold">
           <div>ຜູ້ຈ່າຍເງິນ<div className="mt-20 font-bold text-[14px]">{cu.full_name}</div></div>
-          <div>ຜູ້ຮັບເງິນ<div className="mt-20 font-bold text-[14px]">{seller?.full_name}</div></div>
+          <div>ຜູ້ຮັບເງິນ<div className="mt-20 font-bold text-[14px]">{receiverName}</div></div>
           <div>ພະຍານ<div className="mt-20"></div></div>
         </div>
 
@@ -528,7 +539,7 @@ export default function PrintPage() {
 
         <div className="b-sig grid grid-cols-2 gap-10 mt-14 text-center font-bold">
           <div>ລາຍເຊັນຜູ້ຈອງ<div className="sig-gap mt-28 font-bold text-[15px]">{cu.full_name}</div></div>
-          <div>ລາຍເຊັນຜູ້ຮັບຈອງ<div className="sig-gap mt-28 font-bold text-[15px]">{seller?.full_name}</div></div>
+          <div>ລາຍເຊັນຜູ້ຮັບຈອງ<div className="sig-gap mt-28 font-bold text-[15px]">{docSellerName}</div></div>
         </div>
 
         <div className="no-print text-center text-[11px] text-slate-400 mt-8">
