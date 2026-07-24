@@ -1,574 +1,482 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import Shell, { useApp } from "@/components/Shell";
+import { Badge, Modal, Field, Table, Pager, usePager } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
-import { fmt, fdate, PAY_TYPE, moneyWords } from "@/lib/fmt";
+import { fmt, fdate } from "@/lib/fmt";
 
-const TITLES = {
-  receipt: "ໃບຮັບເງິນ / RECEIPT",
-  booking: "ໃບຈອງດິນ / LAND BOOKING SLIP",
-  handover: "ໃບມອບ-ຮັບໃບຕາດິນ / TITLE DEED HANDOVER",
-  contract: "ສັນຍາຊື້-ຂາຍດິນ",
-  deposit: "ໃບສັນຍາມັດຈໍາເງິນຄ່າດິນ",
-};
-
-const CUSTOMER_COLS = "full_name, first_name, last_name, tel, age, nationality, occupation, village, district, province";
-
-// ທີ່ຢູ່ບໍລິສັດ (ຜູ້ຂາຍ) — ຄົງທີ່ໃນທຸກເອກະສານ
-const COMPANY = { village: "ໂພນຕ້ອງຈອມມະນີ", district: "ຈັນທະບູລີ", province: "ນະຄອນຫຼວງວຽງຈັນ" };
-
-const Row = ({ l, v }) => (
-  <div className="flex justify-between border-b border-dashed border-slate-300 py-2 text-[13.5px]">
-    <span className="text-slate-500">{l}</span><b>{v ?? "—"}</b>
-  </div>
+// ຊ່ອງຄີຈຳນວນເງິນ: ໃສ່ຈຸດຂັ້ນຫຼັກພັນອັດຕະໂນມັດ ໃຫ້ຮູ້ຫຼັກເລກ
+const MoneyInput = ({ value, onChange, ...props }) => (
+  <input {...props} className="inp font-bold text-navy" inputMode="numeric"
+    value={value === "" || value == null ? "" : Number(value).toLocaleString("en-US")}
+    onChange={(e) => { const raw = e.target.value.replace(/[^\d]/g, ""); onChange(raw === "" ? "" : Number(raw)); }} />
 );
 
-// ຊ່ອງຈຸດໆ ຕາມແບບຟອມທາງການ — ຫວ່າງ = ປະໄວ້ຂຽນມື
-const Dot = ({ v, w = "auto", cls = "" }) => (
-  <span className={`border-b border-dotted border-slate-500 px-2 inline-block text-center font-semibold ${cls}`} style={{ minWidth: w }}>{v ?? ""}</span>
-);
+function Payments() {
+  const { projectIds, projects, profile } = useApp();
+  const [users, setUsers] = useState({}); // id → ຊື່ຜູ້ໃຊ້ລະບົບ (ສະແດງຜູ້ຮັບເງິນ)
+  const [inst, setInst] = useState([]);
+  const [contracts, setContracts] = useState([]);
+  const [hist, setHist] = useState([]);
+  const [soon, setSoon] = useState([]);         // ໃກ້ຮອດກຳນົດ 6 ວັນ
+  const [paidFull, setPaidFull] = useState([]); // ຊຳລະຄົບ 100%
+  const [form, setForm] = useState(null);
+  const [addForm, setAddForm] = useState(null); // ຟອມເພີ່ມການຊຳລະງວດ (cascade)
+  const [drill, setDrill] = useState(null);     // contract_id ທີ່ເປີດເບິ່ງລາຍບຸກຄົນ
+  const [tab, setTab] = useState("month");      // default = ການຮັບເງິນງວດປະຈຳເດືອນ
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); // ເດືອນທີ່ເບິ່ງ (YYYY-MM)
 
-// ຫົວເອກະສານທາງການ ສປປ ລາວ + ເລກທີ/ວັນທີ
-const LaoHeader = ({ no, date }) => {
-  const dd = date ? fdate(date).split("/") : ["", "", ""];
+  const load = async () => {
+    if (!projectIds.length) return;
+    const { data: cons } = await supabase.from("contracts")
+      .select("id,contract_no,currency,sale_price,sign_date,pay_type,project_id, customers(full_name,tel), lots(code)").in("project_id", projectIds);
+    setContracts(cons || []);
+    const ids = (cons || []).map((c) => c.id);
+    if (!ids.length) { setInst([]); setHist([]); setSoon([]); setPaidFull([]); return; }
+    // ດຶງທຸກແຖວ (Supabase ຈຳກັດ 1000 ແຖວ/ຄັ້ງ → ດຶງເປັນໜ້າ)
+    const pageAll = async (mk) => {
+      let all = [], from = 0;
+      for (;;) {
+        const { data } = await mk().range(from, from + 999);
+        all = all.concat(data || []);
+        if (!data || data.length < 1000) return all;
+        from += 1000;
+      }
+    };
+    const ins = await pageAll(() => supabase.from("installments")
+      .select("*, payments(id, amount_received)").in("contract_id", ids)
+      .order("due_date", { ascending: true, nullsFirst: false }));
+    setInst(ins);
+    const pays = await pageAll(() => supabase.from("payments")
+      .select("id,receipt_no,pay_date,amount_received,currency,channel,note,contract_id,installment_id,created_at,created_by")
+      .in("contract_id", ids).neq("pay_date", "1900-01-01")
+      .order("pay_date", { ascending: false }));
+    setHist(pays);
+    supabase.from("v_upcoming_installments_6d").select("*").in("project_id", projectIds)
+      .order("due_date").then(({ data }) => setSoon(data || []));
+    supabase.from("v_contracts_paid_full").select("*").in("project_id", projectIds)
+      .order("contract_no").then(({ data }) => setPaidFull(data || []));
+    // ລາຍຊື່ຜູ້ໃຊ້ລະບົບ → ສະແດງວ່າໃຜເປັນຜູ້ຮັບເງິນແຕ່ລະລາຍການ
+    supabase.from("profiles").select("id,full_name")
+      .then(({ data }) => setUsers(Object.fromEntries((data || []).map((u) => [u.id, u.full_name]))));
+  };
+  useEffect(() => { load(); }, [projectIds]);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const cmap = Object.fromEntries(contracts.map((c) => [c.id, c]));
+  const instMap = Object.fromEntries(inst.map((i) => [i.id, i])); // installment_id → ງວດ (ໃຊ້ທຽບກຳນົດຈ່າຍ)
+
+  // ---- ຈັດສັນຍອດແບບສະສົມ (FIFO) ----
+  // ກົດ: ຈ່າຍບໍ່ເຕັມງວດ ≠ ຄ້າງຈ່າຍ · ຈ່າຍ 2-3 ເທົ່າ = ຄວບງວດທັດໄປອັດຕະໂນມັດ
+  const isDown = (p) => (p.note || "").includes("ຈ່າຍກ່ອນ");
+  const downPaidByC = {}; const instPoolByC = {};
+  hist.forEach((p) => {
+    const a = Number(p.amount_received || 0);
+    if (isDown(p)) downPaidByC[p.contract_id] = (downPaidByC[p.contract_id] || 0) + a;
+    else instPoolByC[p.contract_id] = (instPoolByC[p.contract_id] || 0) + a;
+  });
+  const enrich = (() => {
+    const byC = {};
+    inst.forEach((i) => (byC[i.contract_id] = byC[i.contract_id] || []).push(i));
+    const out = [];
+    Object.entries(byC).forEach(([cid, list]) => {
+      let pool = instPoolByC[cid] || 0;   // ເງິນຄ່າງວດສະສົມ
+      let down = downPaidByC[cid] || 0;   // ເງິນດາວ/ຈອງ
+      list.sort((a, b) => a.seq - b.seq).forEach((i) => {
+        const due = Number(i.amount_due || 0);
+        let covered;
+        if (i.seq === 0) { covered = Math.min(down, due); down -= covered; }
+        else { covered = Math.min(pool, due); pool -= covered; }
+        const st = due <= 0 || covered >= due ? "paid"
+          : i.due_date && i.due_date < today ? (covered > 0 ? "partial" : "overdue")
+          : i.due_condition === "after_deed_transfer" ? "deed" : "due";
+        out.push({ ...i, paid: covered, st, c: cmap[cid] });
+      });
+    });
+    return out;
+  })();
+  const filtered = enrich.filter((i) => i.st === tab);
+
+  // ---- ເດືອນທີ່ເລືອກ (ວັນທີ 1 → ວັນສຸດທ້າຍຂອງເດືອນ) ----
+  // ເງິນດາວ/ຈອງ = note "ຈ່າຍກ່ອນ" ຫຼື "ເງິນມັດຈຳ" ຫຼື ຜູກກັບງວດ seq 0
+  const isDownType = (p) => {
+    if (isDown(p) || (p.note || "").includes("ເງິນມັດຈຳ")) return true;
+    const li = p.installment_id ? instMap[p.installment_id] : null;
+    return li ? li.seq === 0 : false;
+  };
+  const inMonth = (d) => !!d && String(d).slice(0, 7) === month;
+  const isCashC = (cid) => cmap[cid]?.pay_type === "cash"; // ສັນຍາຈ່າຍສົດ
+  // ຂາຍໃໝ່+ຈ່າຍສົດ = ເງິນຈອງ/ດາວ ຫຼື ເງິນຈາກສັນຍາຈ່າຍສົດ · ເງິນງວດ = ທີ່ເຫຼືອ
+  const newSalePays = hist.filter((p) => inMonth(p.pay_date) && (isDownType(p) || isCashC(p.contract_id)));
+  const monthPays = hist.filter((p) => inMonth(p.pay_date) && !isDownType(p) && !isCashC(p.contract_id));
+  const sumByCur = (rows, amt, cur) => {
+    const o = {};
+    rows.forEach((r) => { const c = cur(r) || "LAK"; o[c] = (o[c] || 0) + Number(amt(r) || 0); });
+    return o;
+  };
+  // ຮັບຕົວຈິງ vs ຄາດຄະເນ (ງວດ seq>0 ຄົບກຳນົດພາຍໃນເດືອນ, ບໍ່ນັບສັນຍາຈ່າຍສົດ) — ແຍກຕາມສະກຸນ
+  const actByCur = sumByCur(monthPays, (p) => p.amount_received, (p) => p.currency);
+  const expByCur = sumByCur(inst.filter((i) => i.seq !== 0 && inMonth(i.due_date) && !isCashC(i.contract_id)),
+    (i) => i.amount_due, (i) => cmap[i.contract_id]?.currency);
+  const newSaleByCur = sumByCur(newSalePays, (p) => p.amount_received, (p) => p.currency);
+  const monthCurs = [...new Set([...Object.keys(expByCur), ...Object.keys(actByCur)])];
+
+  // ຍອດຄ້າງ "ຫຼັງ" ແຕ່ລະການຮັບເງິນ (ສະສົມຕາມລຳດັບເວລາ) — ໃຊ້ໃນຖັນຍອດຄ້າງ + ໃບມອບຮັບເງິນ
+  const remainAfter = {};
+  {
+    const byC = {};
+    hist.forEach((p) => (byC[p.contract_id] = byC[p.contract_id] || []).push(p));
+    Object.entries(byC).forEach(([cid, ps]) => {
+      const sp = Number(cmap[cid]?.sale_price || 0);
+      let cum = 0;
+      [...ps].sort((a, b) => (a.pay_date + a.created_at).localeCompare(b.pay_date + b.created_at))
+        .forEach((p) => { cum += Number(p.amount_received || 0); remainAfter[p.id] = sp - cum; });
+    });
+  }
+
+  // ໝາຍເຫດ: ທຽບວັນຈ່າຍຈິງ ↔ ກຳນົດຈ່າຍຂອງງວດ
+  const punctual = (p) => {
+    const due = p.installment_id ? instMap[p.installment_id]?.due_date : null;
+    if (!due) return p.note || "—";
+    const days = Math.round((new Date(p.pay_date) - new Date(due)) / 86400000);
+    return days <= 0
+      ? <span className="text-brand-green">ຈ່າຍຕາມກຳນົດ ✓</span>
+      : <span className="text-brand-red">ກາຍກຳນົດ {days} ວັນ</span>;
+  };
+
+  const receive = async (e) => {
+    e.preventDefault();
+    const { data: receiptNo, error: numErr } = await supabase.rpc("next_receipt_no");
+    if (numErr) return alert("ອອກເລກໃບຮັບເງິນບໍ່ໄດ້: " + numErr.message);
+    const { error } = await supabase.from("payments").insert({
+      contract_id: form.contract_id, installment_id: form.installment_id,
+      pay_date: form.pay_date, amount_received: form.amount_received,
+      currency: form.currency, channel: form.channel, receipt_no: receiptNo, note: form.note || null,
+      created_by: profile?.id || null, // ຜູ້ຮັບເງິນ = ຜູ້ໃຊ້ລະບົບທີ່ບັນທຶກ
+    });
+    if (error) return alert("ຜິດພາດ: " + error.message);
+    setForm(null); load();
+  };
+
+  // ---- ຟອມເພີ່ມການຊຳລະງວດ: ໂຄງການ → ຕອນດິນ → ລູກຄ້າ/ງວດ auto ----
+  const paidOf = (i) => (i.payments || []).reduce((s, p) => s + Number(p.amount_received || 0), 0);
+  const pickAddProj = async (pid) => {
+    const { data } = await supabase.from("contracts")
+      .select("id,contract_no,currency, customers(full_name), lots(code)")
+      .eq("project_id", pid).neq("status", "cancelled").order("created_at", { ascending: false }).limit(300);
+    setAddForm({ ...addForm, project_id: pid, contracts: data || [], contract_id: "", c: null, nextInst: null, amount_received: "" });
+  };
+  const pickAddContract = async (cid) => {
+    const c = (addForm.contracts || []).find((x) => x.id === cid);
+    const { data: ins } = await supabase.from("installments").select("*").eq("contract_id", cid).order("seq");
+    const { data: ps } = await supabase.from("payments").select("amount_received,note").eq("contract_id", cid).neq("pay_date", "1900-01-01");
+    // ງວດຕໍ່ໄປ = ງວດທຳອິດທີ່ຍອດສະສົມຍັງບໍ່ພໍ (FIFO — ຈ່າຍລ່ວງໜ້າຄວບງວດອັດຕະໂນມັດ)
+    let pool = (ps || []).filter((p) => !(p.note || "").includes("ຈ່າຍກ່ອນ")).reduce((s, p) => s + Number(p.amount_received || 0), 0);
+    let down = (ps || []).filter((p) => (p.note || "").includes("ຈ່າຍກ່ອນ")).reduce((s, p) => s + Number(p.amount_received || 0), 0);
+    let next = null, outAmt = "";
+    for (const i of ins || []) {
+      const due = Number(i.amount_due || 0);
+      const cov = i.seq === 0 ? Math.min(down, due) : Math.min(pool, due);
+      if (i.seq === 0) down -= cov; else pool -= cov;
+      if (due > 0 && cov < due && !next) { next = i; outAmt = due - cov; }
+    }
+    setAddForm({ ...addForm, contract_id: cid, c, nextInst: next, amount_received: outAmt, currency: c?.currency || "LAK" });
+  };
+  const saveAdd = async (e) => {
+    e.preventDefault();
+    if (!addForm.contract_id) return alert("ກະລຸນາເລືອກຕອນດິນກ່ອນ");
+    const { data: receiptNo, error: numErr } = await supabase.rpc("next_receipt_no");
+    if (numErr) return alert("ອອກເລກໃບຮັບເງິນບໍ່ໄດ້: " + numErr.message);
+    const { error } = await supabase.from("payments").insert({
+      contract_id: addForm.contract_id, installment_id: addForm.nextInst?.id || null,
+      pay_date: addForm.pay_date, amount_received: addForm.amount_received,
+      currency: addForm.currency, channel: addForm.channel, receipt_no: receiptNo,
+      created_by: profile?.id || null, // ຜູ້ຮັບເງິນ = ຜູ້ໃຊ້ລະບົບທີ່ເພີ່ມການຊຳລະງວດ
+    });
+    if (error) return alert("ຜິດພາດ: " + error.message);
+    setAddForm(null); load();
+  };
+
+  const openReceive = (i, paid = 0) => setForm({
+    contract_id: i.contract_id, installment_id: i.id, pay_date: today,
+    amount_due: i.amount_due,
+    amount_received: Number(i.amount_outstanding ?? (Number(i.amount_due) - paid)),
+    currency: (cmap[i.contract_id]?.currency) || "LAK", channel: "ເງິນສົດ",
+    label: `${cmap[i.contract_id]?.contract_no} · ${i.seq === 0 ? "ດາວ (ງວດ 0)" : "ງວດ " + i.seq}`,
+  });
+
+  const ST = {
+    paid: <Badge color="green">ຈ່າຍແລ້ວ</Badge>, overdue: <Badge color="red">ຄ້າງຊຳລະ</Badge>,
+    partial: <Badge color="amber">ຈ່າຍບາງສ່ວນ</Badge>,
+    due: <Badge color="gray">ຍັງບໍ່ຮອດກຳນົດ</Badge>, deed: <Badge color="navy">ຈ່າຍຫຼັງໂອນໃບຕາດິນ</Badge>,
+  };
+  // ໃກ້ຮອດກຳນົດ: ຕັດງວດທີ່ຖືກຄວບຈ່າຍລ່ວງໜ້າແລ້ວອອກ
+  const stById = Object.fromEntries(enrich.map((i) => [i.id, i.st]));
+  const soonLeft = soon.filter((i) => stById[i.id] !== "paid");
+
+  // ---- drill-down ລາຍບຸກຄົນ ----
+  const dc = drill ? cmap[drill] : null;
+  const dInst = drill ? enrich.filter((i) => i.contract_id === drill).sort((a, b) => a.seq - b.seq) : [];
+  const dPays = drill ? hist.filter((p) => p.contract_id === drill) : [];
+  const dPaid = dPays.reduce((s, p) => s + Number(p.amount_received || 0), 0);
+  const custBtn = (contractId, name) => (
+    <button key="cu" className="text-navy underline decoration-dotted hover:text-brand-amber text-left font-semibold"
+      onClick={() => setDrill(contractId)}>{name || "—"}</button>
+  );
+
+  // ---- ແບ່ງໜ້າ 50 ລາຍການ/ໜ້າ (ຕໍ່ tab) — reset ໜ້າ 1 ເມື່ອປ່ຽນໂຄງການ/tab ----
+  const pgMonth = usePager(monthPays, [projectIds, tab, month]);
+  const pgSoon = usePager(soonLeft, [projectIds, tab]);
+  const pgPaid = usePager(paidFull, [projectIds, tab]);
+  const pgInst = usePager(filtered, [projectIds, tab]);
+
+  const TABS = [
+    ["month", "ການຮັບເງິນງວດປະຈຳເດືອນ"],
+    ["soon", `ໃກ້ຮອດກຳນົດ 6 ວັນ${soonLeft.length ? ` (${soonLeft.length})` : ""}`],
+    ["overdue", "ຄ້າງຊຳລະ"], ["paid100", "ຊຳລະຄົບ 100%"],
+  ];
+
   return (
     <>
-      <div className="text-center">
-        <div className="font-bold">ສາທາລະນະລັດ ປະຊາທິປະໄຕ ປະຊາຊົນລາວ</div>
-        <div className="font-bold">ສັນຕິພາບ ເອກະລາດ ປະຊາທິປະໄຕ ເອກະພາບ ວັດທະນະຖາວອນ</div>
-        <div>--------==00==--------</div>
+      <div className="flex gap-2 items-center mb-4 flex-wrap">
+        <h2 className="text-lg font-bold text-navy mr-auto">ການຊຳລະເງິນ</h2>
+        {TABS.map(([k, l]) => (
+          <span key={k} className="flex items-center gap-2">
+            <button onClick={() => setTab(k)}
+              className={`px-3 py-1.5 rounded-full text-xs border ${tab === k ? "bg-navy text-white border-navy" : "bg-white border-slate-300"}`}>{l}</button>
+            {k === "month" && (
+              <input type="month" className="inp !w-auto !py-1.5 text-xs" value={month} onChange={(e) => setMonth(e.target.value)} />
+            )}
+          </span>
+        ))}
+        <button className="btn-p" onClick={() => setAddForm({ pay_date: today, channel: "ເງິນສົດ", currency: "LAK" })}>+ ເພີ່ມການຊຳລະງວດ</button>
       </div>
-      <div className="text-right text-[13px] mt-1">
-        <div><b>No:</b> <Dot v={no} w="120px" /></div>
-        <div className="mt-1">ວັນທີ <Dot v={dd[0]} w="34px" />/<Dot v={dd[1]} w="34px" />/<Dot v={dd[2]} w="52px" /></div>
-      </div>
-    </>
-  );
-};
 
-export default function PrintPage() {
-  const { type, id } = useParams();
-  const [d, setD] = useState(null);
-  const [seller, setSeller] = useState(null); // ຜູ້ຂາຍ = profile ຜູ້ໃຊ້ທີ່ login
-  const [rem, setRem] = useState(null); // ຍອດເຫຼືອຫຼັງການຊຳລະຄັ້ງນີ້ (ໃບມອບຮັບເງິນ)
-  const [rcptRows, setRcptRows] = useState([]); // ແຖວຕາຕະລາງໃບມອບຮັບເງິນ (ດາວ+ງວດ ພ້ອມປະຫວັດຊຳລະ)
-  const [firstPay, setFirstPay] = useState(0); // ເງິນຮັບຄັ້ງທຳອິດ (fallback ເງິນດາວ/ງວດ 1 ຂອງສັນຍາ import)
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    (async () => {
-      const { data: s } = await supabase.auth.getSession();
-      if (!s.session) { setErr("ກະລຸນາ login ກ່ອນ ແລ້ວເປີດໜ້ານີ້ໃໝ່"); return; }
-      // ຜູ້ຂາຍ: ດຶງຈາກ account ຜູ້ໃຊ້ລະບົບ (profiles)
-      supabase.from("profiles").select("full_name, position, tel, village, district, province")
-        .eq("id", s.session.user.id).maybeSingle().then(({ data: p }) => setSeller(p || {}));
-      let q;
-      if (type === "receipt")
-        q = supabase.from("payments").select("*, installments(seq), contracts(contract_no, currency, sale_price, n_installments, sales_person, customers(full_name, first_name, last_name, tel, village, district, province), lots(code, size_sqm), projects(name, village, district, province))").eq("id", id).single();
-      else if (type === "booking")
-        q = supabase.from("bookings").select(`*, customers(${CUSTOMER_COLS}), lots(code, size_sqm, list_price, currency), projects(name, village, district, province)`).eq("id", id).single();
-      else if (type === "deposit")
-        q = supabase.from("bookings").select(`*, customers(${CUSTOMER_COLS}), lots(code, size_sqm, list_price, currency), projects(name, village, district, province)`).eq("id", id).single();
-      else if (type === "handover")
-        q = supabase.from("title_deeds").select("*, contracts(contract_no, customers(full_name, tel), lots(code, size_sqm), projects(name))").eq("id", id).single();
-      else
-        q = supabase.from("contracts").select(`*, customers(${CUSTOMER_COLS}), lots(code, size_sqm), projects(name, village, district, province), installments(seq, due_date, amount_due)`).eq("id", id).single();
-      const { data, error } = await q;
-      if (error) { setErr(error.message); return; }
-      setD(data);
-      // ສັນຍາ: ດຶງເງິນຮັບຄັ້ງທຳອິດ (ຕາມ pay_date) ເປັນ fallback ຂອງ "ງວດທີ 1 / ເງິນດາວ"
-      // ເພາະສັນຍາ import ບໍ່ມີ down_payment ແລະ ບໍ່ມີງວດ 0 — ເງິນມື້ເຮັດສັນຍາຢູ່ໃນຕາຕະລາງ payments
-      if (type === "contract" && data?.id) {
-        const { data: ps } = await supabase.from("payments")
-          .select("amount_received,pay_date,created_at").eq("contract_id", data.id);
-        if (ps && ps.length) {
-          ps.sort((a, b) => (String(a.pay_date) + a.created_at).localeCompare(String(b.pay_date) + b.created_at));
-          setFirstPay(Number(ps[0].amount_received || 0));
-        }
-      }
-      // ໃບມອບຮັບເງິນ: ດຶງປະຫວັດການຊຳລະທັງໝົດ → ໃສ່ຕາຕະລາງ ຕາມ ດາວ(seq0) + ງວດ1..N
-      if (type === "receipt" && data?.contract_id) {
-        const nInst = Number(data.contracts?.n_installments || 0);
-        const sale = Number(data.contracts?.sale_price || 0);
-        const { data: ps } = await supabase.from("payments")
-          .select("amount_received, installment_id, installments(seq)").eq("contract_id", data.contract_id);
-        // ລວມເງິນຮັບຕາມ seq (ຈ່າຍນອກງວດ / booking_fee → ນັບເປັນ ດາວ seq 0)
-        const paidBySeq = {};
-        (ps || []).forEach((p) => {
-          const s = p.installments?.seq ?? 0;
-          paidBySeq[s] = (paidBySeq[s] || 0) + Number(p.amount_received || 0);
-        });
-        let cum = 0;
-        const rws = [];
-        for (let s = 0; s <= nInst; s++) {
-          const paid = paidBySeq[s] || 0;
-          cum += paid;
-          rws.push({ label: s === 0 ? "ດາວ" : `ງວດ${s}`, paid, remaining: paid > 0 ? Math.max(sale - cum, 0) : null });
-        }
-        setRcptRows(rws);
-      }
-    })();
-  }, [type, id]);
-
-  // ?auto=1 → ເປີດ dialog ພິມ/Save as PDF ອັດຕະໂນມັດ (ໃຊ້ສົ່ງ PDF ໃຫ້ລູກຄ້າ)
-  useEffect(() => {
-    if (d && new URLSearchParams(window.location.search).get("auto"))
-      setTimeout(() => window.print(), 700);
-  }, [d]);
-
-  if (err) return <div className="p-10 text-center text-brand-red">{err}</div>;
-  if (!d) return <div className="p-10 text-center text-slate-400">ກຳລັງໂຫຼດ...</div>;
-
-  const today = fdate(new Date().toISOString());
-  // ແຖວ "ຜູ້ຂາຍ" — ຊື່+ທີ່ຢູ່ ຈາກ profile ຜູ້ໃຊ້ (ຫວ່າງ = ຈຸດໆໃຫ້ຂຽນມື)
-  const SellerLine = () => (
-    <div>
-      <b>ຜູ້ຂາຍ:</b> <Dot v={seller?.full_name} w="220px" cls="text-[1.15em] font-bold" />, ທີ່ຢູ່ບໍລິສັດ
-      ບ້ານ <Dot v={COMPANY.village} w="150px" />,
-      ເມືອງ <Dot v={COMPANY.district} w="140px" />,
-      ແຂວງ <Dot v={COMPANY.province} w="150px" />.
-    </div>
-  );
-  const ProjectLine = ({ pr }) => (
-    <div>
-      ເຊິ່ງເປັນເຈົ້າຂອງໂຄງການ: ຈັດສັນທີ່ດິນເພື່ອທີ່ຢູ່ອາໄສ ({pr?.name}),
-      ບ້ານ <Dot v={pr?.village} w="150px" />,
-      ເມືອງ <Dot v={pr?.district} w="140px" />,
-      ແຂວງ <Dot v={pr?.province} w="150px" />.
-    </div>
-  );
-  // ຂໍ້ມູນຜູ້ຊື້ inline: ທ່ານ ... ອາຍຸ ... ສັນຊາດ ... ອາຊີບ ... ບ້ານ ... ເມືອງ ... ແຂວງ ... ໂທ ...
-  const BuyerInline = ({ cu }) => (
-    <>
-      ທ່ານ <Dot v={cu?.full_name} w="180px" cls="text-[1.15em] font-bold" /> ອາຍຸ <Dot v={cu?.age} w="40px" /> ປີ,
-      ສັນຊາດ <Dot v={cu?.nationality} w="60px" /> ອາຊີບ <Dot v={cu?.occupation} w="110px" />
-      {" "}ບ້ານຢູ່ປະຈຸບັນ <Dot v={cu?.village} w="120px" /> ເມືອງ <Dot v={cu?.district} w="110px" />
-      {" "}ແຂວງ <Dot v={cu?.province} w="110px" /> ເບີໂທລະສັບ <Dot v={cu?.tel} w="110px" /> (ຜູ້ຊື້)
-    </>
-  );
-
-  // ---------- ສັນຍາຊື້-ຂາຍດິນ (ສະບັບເຕັມ ຕາມ template ບໍລິສັດ) ----------
-  if (type === "contract") {
-    const cu = d.customers || {}, lo = d.lots || {}, pr = d.projects || {};
-    const isCash = d.pay_type === "cash";
-    const seq0 = (d.installments || []).find((i) => i.seq === 0); // ງວດ 0 = ເງິນດາວ
-    // ເງິນດາວ / ງວດທີ 1 (ເງິນມື້ເຮັດສັນຍາ): ໄລ່ຕາມລຳດັບ —
-    //   1) down_payment/cash_pay1 ທີ່ຄີໃນຟອມ  2) ງວດ 0  3) ເງິນມື້ຈອງ (booking_fee)  4) ເງິນຮັບຄັ້ງທຳອິດຈິງ
-    // ສັນຍາ import ບໍ່ມີ down_payment → ໃຊ້ເງິນຮັບຈິງ ເພື່ອບໍ່ໃຫ້ຊ່ອງ "ງວດທີ 1" ຫວ່າງ
-    const pay1 = isCash
-      ? (Number(d.cash_pay1 || 0) || Number(d.booking_fee || 0) || firstPay || 0)
-      : (Number(d.down_payment || 0) || Number(seq0?.amount_due || 0) || Number(d.booking_fee || 0) || firstPay || 0);
-    const rest = Number(d.sale_price || 0) - pay1;
-    const months = Number(d.n_installments || 0) * Number(d.installment_period_months || 1);
-    const ins = (d.installments || []).filter((i) => i.seq > 0).sort((a, b) => a.seq - b.seq);
-    const first = ins[0], last = ins[ins.length - 1];
-    const payDay = first?.due_date ? new Date(first.due_date).getDate() : null;
-    const Chk = ({ on }) => (
-      <span className="w-5 h-5 border-2 border-black inline-flex items-center justify-center align-middle mr-1 text-[13px] font-bold">{on ? "✓" : ""}</span>
-    );
-    return (
-      <div className="contract-sheet max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[13.5px] leading-[1.8] text-justify">
-        <style>{`
-          @media print {
-            @page { size: A4 portrait; margin: 7mm 12mm; }
-            .contract-sheet { font-size: 11.5px !important; line-height: 1.45 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
-            .contract-sheet .c-title { font-size: 18px !important; margin: 5px 0 !important; }
-            .contract-sheet .c-note { font-size: 10.5px !important; }
-            .contract-sheet .sig-area { margin-top: 16px !important; }
-            .contract-sheet .sig-gap { margin-top: 64px !important; }
-            .contract-sheet .c-wit { margin-top: 34px !important; }
-            .contract-sheet .c-logo-wrap { width: 26mm !important; }
-            .contract-sheet .c-logo { width: 26mm !important; height: 26mm !important; }
-            .contract-sheet .co-name { font-size: 11px !important; }
-          }
-        `}</style>
-        <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
-        <div className="relative">
-          <div className="c-logo-wrap absolute left-0 -top-1 w-28 text-center">
-            <img src="/logo-mark.png" alt="U-Sabai" className="c-logo w-28 h-28 object-contain mx-auto" />
-            <div className="co-name text-[16px] font-bold leading-snug whitespace-nowrap">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
-          </div>
-          <LaoHeader no={d.contract_no} date={d.sign_date} />
-        </div>
-        <div className="c-title text-center text-2xl font-bold my-3 underline underline-offset-4">ສັນຍາຊື້-ຂາຍດິນ</div>
-
-        <div className="space-y-1">
-          <SellerLine />
-          <ProjectLine pr={pr} />
-          <div>
-            ໄດ້ຕົກລົງຂາຍດິນຈັດສັນລ໋ອກທີ <Dot v={lo.code} w="80px" /> ຂະໜາດ <Dot w="90px" />
-            {" "}ເນື້ອທີ່ດິນ <Dot v={lo.size_sqm ? Number(lo.size_sqm) + " ຕລມ" : null} w="90px" />
-            {" "}ເຮັດໃບຕາດິນຈຳນວນ <Dot v={d.n_deeds ?? 1} w="40px" /> ຕອນ ໃຫ້ແກ່ <BuyerInline cu={cu} />
-          </div>
-          <div className="c-note text-[12.5px]">
-            <b>ໝາຍເຫດ:</b> ເນື້ອທີ່ດິນຂ້າງເທິງແມ່ນເນື້ອທີ່ຄາດຄະເນເບື້ອງຕົ້ນ, ເນື້ອທີ່ຕົວຈິງແມ່ນອີງຕາມເນື້ອທີ່ທີ່ລະບຸໃນໃບຕາດິນ,
-            ຖ້າຫາກວ່າເນື້ອທີ່ຕົວຈິງຫາກໜ້ອຍກວ່າເນື້ອທີ່ຄາດຄະເນເບື້ອງຕົ້ນ, ຜູ້ຂາຍແມ່ນຍິນດີຄືນເງິນໃຫ້ຜູ້ຊື້ຕາມອັດຕາຄິດໄລ່ຕົວຈິງ
-            ແລະ ຖ້າຫາກວ່າເນື້ອທີ່ຕົວຈິງຫາກຫຼາຍກວ່າເນື້ອທີ່ຄາດຄະເນ, ຜູ້ຊື້ຕ້ອງຍິນດີຈ່າຍເງິນເພີ່ມຕາມອັດຕາຄິດໄລ່ຕົວຈິງ.
-          </div>
-        </div>
-
-        <div className="font-bold mt-2">ທັງສອງຝ່າຍຕົກລົງເຫັນດີຮ່ວມກັນໃນເງື່ອນໄຂການຊື້-ຂາຍ ແລະ ຂໍ້ກຳນົດດັ່ງລຸ່ມນີ້:</div>
-        <div className="space-y-1 mt-1">
-          <div>
-            1. ຜູ້ຂາຍໄດ້ຕົກລົງເຫັນດີຂາຍດິນ ໃນລາຄາ <Dot v={fmt(d.sale_price, d.currency)} w="160px" /><br />
-            (<Dot v={moneyWords(d.sale_price, d.currency)} w="320px" />)
-          </div>
-          <div>
-            2. ຜູ້ຊື້ໄດ້ຕົກລົງຈ່າຍ: ງວດທີ 1: ຊຳລະຈຳນວນເງິນ <Dot v={pay1 ? fmt(pay1, d.currency) : null} w="150px" /> ໃນມື້ເຮັດສັນຍາຊື້ຂາຍ<br />
-            (<Dot v={moneyWords(pay1, d.currency)} w="320px" />)<br />
-            ງວດທີ່ເຫຼືອຈຳນວນ <Dot v={rest > 0 ? fmt(rest, d.currency) : null} w="150px" /><br />
-            (<Dot v={moneyWords(rest > 0 ? rest : 0, d.currency)} w="320px" />)
-          </div>
-          <div className="pl-4">
-            <Chk on={isCash} /> ຈ່າຍສົດພາຍຫຼັງແລ່ນໃບຕາດິນຂອບທອງເປັນຂອງລູກຄ້າແລ້ວ (ພາຍໃນ 30 ວັນ)
-          </div>
-          <div className="pl-4">
-            <Chk on={!isCash && d.pay_type === "installment"} /> ຈ່າຍຜ່ອນກຳນົດເວລາຜ່ອນ <Dot v={months || null} w="46px" /> ເດືອນ,
-            ດອກເບ້ຍ <Dot v={0} w="40px" /> % ຈຳນວນເງິນເດືອນລະ <Dot v={d.installment_amt ? fmt(d.installment_amt, d.currency) : null} w="130px" />
-            {" "}ຈ່າຍທຸກວັນທີ <Dot v={payDay} w="40px" /> ຂອງແຕ່ລະເດືອນ,
-            ເລີ່ມຈ່າຍວັນທີ <Dot v={first ? fdate(first.due_date) : null} w="90px" /> ຈົນເຖິງວັນທີ <Dot v={last ? fdate(last.due_date) : null} w="90px" />
-            {" "}ຈົນຄົບຈຳນວນ <Dot v={rest > 0 ? fmt(rest, d.currency) : null} w="130px" />
-          </div>
-          <div className="pl-4">
-            <Chk on={d.pay_type !== "cash" && d.pay_type !== "installment"} /> ຈ່າຍຮູບແບບອື່ນ <Dot v={d.pay_type !== "cash" && d.pay_type !== "installment" ? (d.pay_other || PAY_TYPE[d.pay_type]) : null} w="300px" />
-          </div>
-          <div>4. ຮູບແບບການຊຳລະເງິນແມ່ນສາມາດເຂົ້າມາຊຳລະກັບຜູ້ຂາຍໂດຍກົງ, ຊຳລະໂດຍໂອນຈ່າຍຜ່ານທະນາຄານ ຫຼື ຜ່ານລະບົບ BCEL One</div>
-          <div>5. ຜູ້ຂາຍຈະເປັນຜູ້ຮັບຜິດຊອບແລ່ນມອບໂອນກຳມະສິດທີ່ດິນໃຫ້ກັບຜູ້ຊື້ ແລະ ເກັບຮັກສາໃບຕາດິນສະບັບແທ້ໄວ້ກັບຜູ້ຂາຍຈົນກວ່າລູກຄ້າຈະຊຳລະຄ່າດິນໝົດ.</div>
-          <div>6. ຫາກຝ່າຍໃດຝ່າຍໜຶ່ງເຈຕະນາຜິດຕໍ່ສັນຍາການຊື້-ຂາຍສະບັບນີ້ ຜູ້ກ່ຽວຂໍຮັບຜິດຊອບຂໍ້ກຳນົດປັບໄໝດັ່ງນີ້:</div>
-          <div className="pl-4">
-            <b>ຄວາມຮັບຜິດຊອບຂອງຜູ້ຂາຍ:</b> ຜູ້ຂາຍຂໍຢັ້ງຢືນວ່າ ເອກະສານກຳມະສິດນຳໃຊ້ທີ່ດິນຂ້າງເທິງແມ່ນເປັນຂອງຜູ້ຂາຍແທ້,
-            ຖ້າຫາກມີບັນຫາຈົນເປັນເຫດໃຫ້ບໍ່ສາມາດມອບໂອນກຳມະສິດເປັນຂອງຜູ້ຊື້ໄດ້, ຜູ້ຂາຍຂໍຍອມຮັບຜິດຊອບທົດແທນຄ່າເສຍຫາຍ
-            ແລະ ສົ່ງຄືນເງິນທັງໝົດ 100% ທີ່ລູກຄ້າຊຳລະຜ່ານມາ.
-          </div>
-          <div className="pl-4"><b>ຄວາມຮັບຜິດຊອບຂອງລູກຄ້າ</b></div>
-          <div className="pl-4">* ກໍລະນີລູກຄ້າຈ່າຍສົດ:</div>
-          <div className="pl-8">
-            - ພາຍຫຼັງທີ່ເຊັນມອບໂອນກຳມະສິດ ແລະ ແລ່ນໃບຕາດິນຂອບທອງສຳເລັດ ຜູ້ຊື້ຈະຕ້ອງຊຳລະເງິນສ່ວນທີ່ເຫຼືອທັງໝົດໃຫ້ກັບຜູ້ຂາຍ,
-            ຜູ້ຂາຍຈຶ່ງຈະມອບໃບຕາດິນຂອບທອງໃຫ້ກັບຜູ້ຊື້.<br />
-            - ໃນກໍລະນີທີ່ຜູ້ຊື້ ຫາກບໍ່ມາຊຳລະເງິນສ່ວນທີ່ເຫຼືອ ຫຼັງຈາກທີ່ແລ່ນໃບຕາດິນຂອບທອງສຳເລັດ ພາຍໃນ 01 ເດືອນ
-            ຜູ້ຂາຍມີສິດຍົກເລີກໃບຕາດິນຂອບທອງ ແລະ ຖືວ່າຜູ້ຊື້ສະຫຼະສິດໃນເງິນຈຳນວນທີ່ໄດ້ຊຳລະໃນງວດທີ 1.
-          </div>
-          <div className="pl-4">* ກໍລະນີລູກຄ້າຈ່າຍຜ່ອນ:</div>
-          <div className="pl-8">
-            - ກໍລະນີລູກຄ້າຈ່າຍຜ່ອນກາຍກຳນົດເວລາທີ່ຕົກລົງກັນໄວ້ (<Dot v={months || null} w="40px" /> ເດືອນ) ທາງຜູ້ຂາຍຈະຄິດໄລ່ດອກເບ້ຍ 1.5% ຕໍ່ເດືອນ
-            ເຊິ່ງຈະຄິດໄລ່ຈາກຍອດທີ່ຄ້າງຈ່າຍຕົວຈິງ.<br />
-            - ກໍລະນີທີ່ຜູ້ຊື້ ຄ້າງການຜ່ອນຈ່າຍ ກາຍວັນເວລາທີ່ກຳນົດໄວ້ 3 ເດືອນ ຫຼື ຈ່າຍຊ້າຄົບ 3 ເດືອນ ຜູ້ຂາຍມີສິດຍົກເລີກສັນຍາ,
-            ພ້ອມທັງໂອນກຳມະສິດເປັນຂອງຜູ້ຂາຍຄືນ ແລະ ຖືວ່າຜູ້ຊື້ສະຫຼະສິດເງິນຈຳນວນທີ່ໄດ້ຊຳລະຜ່ານມາ.<br />
-            - ກໍລະນີທີ່ຜູ້ຊື້ຫາກຈ່າຍຊ້າ ການ 3 ຄັ້ງ (ໂດຍຈະນັບເປັນ 1 ຄັ້ງ ຖ້າຫາກຜູ້ຊື້ຫາກຈ່າຍຊ້າເກີນ 2 ອາທິດ ຕາມວັນທີກຳນົດໄວ້ໃນຂໍ້ 2 ຂອງສັນຍາ)
-            ຜູ້ຂາຍມີສິດຍົກເລີກສັນຍາ, ພ້ອມທັງໂອນກຳມະສິດທີ່ດິນເປັນຂອງຜູ້ຂາຍຄືນ ແລະ ຖືວ່າຜູ້ຊື້ສະຫຼະສິດເງິນຈຳນວນທີ່ໄດ້ຊຳລະຜ່ານມາ.
-          </div>
-          <div>
-            ສັນຍາສະບັບນີ້ໄດ້ເຮັດຂຶ້ນ 2 ສະບັບ, ເກັບມ້ຽນໄວ້ຝ່າຍລະ 1 ສະບັບ, ທັງສອງຝ່າຍໄດ້ອ່ານ ແລະ ເຂົ້າໃຈເນື້ອໃນຂອງສັນຍາສະບັບນີ້ແລ້ວເປັນຢ່າງດີ,
-            ຈຶ່ງໄດ້ຍິນຍອມພ້ອມກັນລົງລາຍເຊັນໄວ້ເປັນຫຼັກຖານ, ຖ້າຫາກຝ່າຍໃດລະເມີດແມ່ນຈະຖືກປັບໄໝເປັນຈຳນວນເງິນ 20,000,000 ກີບ (ຊາວລ້ານກີບ)
-            ແລະ ຖືກດຳເນີນຄະດີຕາມກົດໝາຍຂອງ ສປປ ລາວ.
-          </div>
-        </div>
-
-        <div className="sig-area grid grid-cols-3 gap-6 mt-8 text-center font-bold">
-          <div>ລາຍເຊັນຜູ້ຊື້<div className="sig-gap mt-28 font-bold text-[15px]">{cu.full_name}</div></div>
-          <div>ລາຍເຊັນຜູ້ຂາຍ<div className="sig-gap mt-28 font-bold text-[15px]">{seller?.full_name}</div></div>
-          <div>ນາຍບ້ານ, ບ້ານ <Dot w="110px" /><div className="sig-gap mt-28"></div></div>
-        </div>
-        <div className="c-wit grid grid-cols-2 gap-10 mt-12 text-[13px]">
-          <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (1) <Dot w="170px" /></div>
-          <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (2) <Dot w="170px" /></div>
-        </div>
-
-        <div className="no-print text-center text-[11px] text-slate-400 mt-8">
-          ອອກໂດຍລະບົບ U-Sabai Land System · ວັນທີພິມ {today}
-        </div>
-      </div>
-    );
-  }
-
-  // ---------- ໃບສັນຍາມັດຈຳເງິນຄ່າດິນ (ຕາມ template ບໍລິສັດ) ----------
-  if (type === "deposit") {
-    const cu = d.customers || {}, lo = d.lots || {}, pr = d.projects || {};
-    const cur = d.currency || lo.currency || "LAK";
-    const dep = [
-      // ງວດ 1 = ມື້ອອກໃບມັດຈຳ (booking_date) · ງວດ 2 = ມື້ນັດເຮັດສັນຍາ (contract_due_date)
-      { amt: d.deposit_amount, date: d.deposit1_date || d.booking_date, label: "ງວດທີ 1: ຜູ້ຊື້ໄດ້ຕົກລົງຈ່າຍເງິນມັດຈຳ" },
-      { amt: d.deposit2_amount, date: d.deposit2_date || d.contract_due_date, label: "ງວດທີ 2: ຜູ້ຊື້ນັດຈ່າຍໃນມື້ເຮັດສັນຍາ" },
-    ];
-    return (
-      <div className="dep-sheet max-w-[860px] mx-auto p-8 bg-white min-h-screen text-black text-[15.5px] leading-[2.05] text-justify">
-        <style>{`
-          @media print {
-            @page { size: A4 portrait; margin: 9mm 12mm; }
-            .dep-sheet { font-size: 13.5px !important; line-height: 1.7 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
-            .dep-sheet .d-title { font-size: 18px !important; margin: 5px 0 !important; }
-            .dep-sheet .d-note { font-size: 12px !important; }
-            .dep-sheet .sig-gap { margin-top: 68px !important; }
-            .dep-sheet .d-wit { margin-top: 40px !important; }
-            .dep-sheet .d-logo-wrap { width: 26mm !important; }
-            .dep-sheet .d-logo { width: 26mm !important; height: 26mm !important; }
-            .dep-sheet .co-name { font-size: 11px !important; }
-          }
-        `}</style>
-        <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
-        <div className="relative">
-          <div className="d-logo-wrap absolute left-0 -top-1 w-28 text-center">
-            <img src="/logo-mark.png" alt="U-Sabai" className="d-logo w-28 h-28 object-contain mx-auto" />
-            <div className="co-name text-[16px] font-bold leading-snug whitespace-nowrap">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
-          </div>
-          <LaoHeader no={d.booking_no} date={d.booking_date} />
-        </div>
-        <div className="d-title text-center text-2xl font-bold my-3 underline underline-offset-4">ໃບສັນຍາມັດຈຳເງິນຄ່າດິນ</div>
-        <div className="h-6" />
-
-        <div className="space-y-1">
-          <SellerLine />
-          <ProjectLine pr={pr} />
-          <div>
-            ຮັບເງິນມັດຈຳຄ່າດິນຈາກ <BuyerInline cu={cu} /> ເຊິ່ງໄດ້ຕົກລົງຂາຍດິນຈັດສັນລ໋ອກທີ <Dot v={lo.code} w="80px" />
-            {" "}ຂະໜາດ <Dot w="90px" /> ເນື້ອທີ່ດິນ <Dot v={lo.size_sqm ? Number(lo.size_sqm) + " ຕລມ" : null} w="90px" />
-            {" "}ມູນຄ່າ <Dot v={lo.list_price ? fmt(lo.list_price, lo.currency) : null} w="140px" /><br />
-            (<Dot v={moneyWords(lo.list_price, lo.currency)} w="320px" />)
-          </div>
-        </div>
-
-        <div className="font-bold mt-2">ທັງສອງຝ່າຍຕົກລົງເຫັນດີພາຍໃຕ້ຂໍ້ກຳນົດດັ່ງລຸ່ມນີ້:</div>
-        <div className="mt-1">
-          <div className="font-bold">ມາດຕາ 1: ວ່າດ້ວຍການມັດຈຳເງິນຄ່າດິນ</div>
-          {dep.map((g, i) => (
-            <div key={i} className="pl-4">
-              1.{i + 1} {g.label} ຈຳນວນ <Dot v={g.amt ? fmt(g.amt, cur) : null} w="170px" /> ວັນທີ <Dot v={g.date ? fdate(g.date) : null} w="110px" />
-            </div>
-          ))}
-          <div className="pl-4">ໝາຍເຫດ: <Dot v={d.deposit_note || d.note} w="440px" /></div>
-
-          <div className="font-bold mt-2">ມາດຕາ 2: ວ່າດ້ວຍໄລຍະເວລາໃນການມັດຈຳດິນ</div>
-          <div className="pl-4">2.1 ສັນຍາມັດຈຳສະບັບນີ້ ນຳໃຊ້ໄດ້ພາຍໃນ 07 ວັນ ນັບແຕ່ມື້ລົງລາຍເຊັນ ແລະ ຮັບເງິນມັດຈຳເປັນຕົ້ນໄປ.</div>
-          <div className="pl-4">2.2 ຜູ້ຂາຍບໍ່ມີສິດນຳດິນໄປຂາຍຕໍ່ໃຫ້ບຸກຄົນອື່ນ ແລະ ຜູ້ຊື້ກໍ່ບໍ່ສາມາດຖອນເງິນມັດຈຳ ແລະ ນຳດິນໄປຂາຍຕໍ່.</div>
-          <div className="pl-4">
-            2.3 ໃນກໍລະນີທີ່ຜູ້ຊື້ ຫາກບໍ່ມາຊຳລະເງິນຕາມວັນເວລາທີ່ໄດ້ລະບຸໄວ້ໃນມາດຕາ 02 ຖືວ່າຜູ້ຊື້ສະຫຼະສິດ
-            ແລະ ຜູ້ຂາຍກໍ່ສາມາດນຳເອົາດິນຕອນດັ່ງກ່າວໄປຂາຍຕໍ່ໃຫ້ບຸກຄົນອື່ນໄດ້ ແລະ ຖືວ່າສັນຍາສະບັບນີ້ເປັນໂມຄະ
-            ແລະ ຜູ້ຂາຍກໍ່ຈະບໍ່ສົ່ງເງິນມັດຈຳຄືນ.
-          </div>
-          <div className="d-note pl-4 text-[12.5px]">
-            <b>ໝາຍເຫດ:</b> ໃນກໍລະນີທີ່ຜູ້ຊື້ຫາກມີການປ່ຽນແປງ, ບໍ່ຊື້ດິນ, ຜູ້ຊື້ຕ້ອງໄດ້ແຈ້ງພາຍໃນ 07 ວັນ ຫຼັງຈາກທີ່ຈ່າຍເງິນມັດຈຳ
-            ຫຼື ແຈ້ງກ່ອນລ່ວງໜ້າມື້ນັດຊຳລະເງິນ, ຜູ້ຂາຍຈຶ່ງຈະຄືນເງິນມັດຈຳໃຫ້ 50% ຂອງມູນຄ່າມັດຈຳ
-          </div>
-
-          <div className="mt-2">
-            <b>ມາດຕາ 3:</b> ສັນຍາສະບັບນີ້ໄດ້ເຮັດຂຶ້ນ 2 ສະບັບ, ເກັບມ້ຽນໄວ້ຝ່າຍລະ 1 ສະບັບ, ທັງສອງຝ່າຍໄດ້ອ່ານ ແລະ ເຂົ້າໃຈເນື້ອໃນຂອງສັນຍາສະບັບນີ້ແລ້ວເປັນຢ່າງດີ,
-            ຈຶ່ງໄດ້ຍິນຍອມພ້ອມກັນລົງລາຍເຊັນໄວ້ເປັນຫຼັກຖານ, ຖ້າຫາກຝ່າຍໃດລະເມີດແມ່ນຈະຖືກປັບໄໝ ແລະ ຖືກດຳເນີນຄະດີຕາມກົດໝາຍຂອງ ສປປ ລາວ.
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-10 mt-8 text-center font-bold">
-          <div>ລາຍເຊັນຜູ້ຊື້<div className="sig-gap mt-28 font-bold text-[15px]">{cu.full_name}</div></div>
-          <div>ລາຍເຊັນຜູ້ຂາຍ<div className="sig-gap mt-28 font-bold text-[15px]">{seller?.full_name}</div></div>
-        </div>
-        <div className="d-wit grid grid-cols-2 gap-10 mt-16 text-[13px]">
-          <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (1) <Dot w="170px" /><div className="sig-gap mt-16" /></div>
-          <div>ຊື່ ແລະ ລາຍເຊັນພະຍານ (2) <Dot w="170px" /><div className="sig-gap mt-16" /></div>
-        </div>
-
-        <div className="no-print text-center text-[11px] text-slate-400 mt-8">
-          ອອກໂດຍລະບົບ U-Sabai Land System · ວັນທີພິມ {today}
-        </div>
-      </div>
-    );
-  }
-
-  // ---------- ໃບມອບຮັບເງິນ (format ດຽວກັນກັບ ສັນຍາຊື້-ຂາຍ) ----------
-  if (type === "receipt") {
-    const c = d.contracts || {};
-    const cu = c.customers || {};
-    const pr = c.projects || {};
-    const cash = (d.channel || "").includes("ສົດ");
-    // ຜູ້ຂາຍ = ຜູ້ອອກສັນຍາສະບັບຕົ້ນ (contracts.sales_person) · ຜູ້ຮັບເງິນ = ຜູ້ໃຊ້ລະບົບປັດຈຸບັນ
-    const sellerName = c.sales_person || seller?.full_name;
-    const cur = c.currency;
-    // ແຖວ = ດາວ + ງວດ (ຈາກ rcptRows ທີ່ດຶງປະຫວັດ) · ແບ່ງ 2 ຝັ່ງ (ດາວ,ງວດ1.. | ງວດ..)
-    const src = rcptRows.length ? rcptRows : ["ດາວ", ...Array.from({ length: Number(c.n_installments || 0) }, (_, i) => `ງວດ${i + 1}`)].map((l) => ({ label: l, paid: 0, remaining: null }));
-    const half = Math.max(1, Math.ceil(src.length / 2));
-    const rows = Array.from({ length: half }, (_, i) => ({ L: src[i] || null, R: src[i + half] || null }));
-    // ຄິດຄວາມສູງແຖວ ໃຫ້ຕື່ມເຕັມ A4 ໜ້າດຽວ (budget ~149mm, ໃຊ້ 147 ເຫຼືອ buffer 2mm):
-    // 36ງວດ=19ແຖວ→7.74mm, 30=16→9.19mm, 24=13→11.31mm · ໜ້ອຍງວດ ສູງສຸດ 12mm
-    const rowMM = Math.min(12, 147 / half).toFixed(2);
-    return (
-      <div className="rcpt-sheet max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[15px] leading-[1.8]">
-        <style>{`
-          @media print {
-            @page { size: A4 portrait; margin: 10mm 12mm; }
-            .rcpt-sheet { font-size: 13.5px !important; line-height: 1.6 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
-            .rcpt-sheet .r-title { font-size: 19px !important; margin: 5px 0 !important; }
-            .rcpt-sheet .co-name { font-size: 11px !important; }
-            .rcpt-sheet .r-logo { width: 26mm !important; height: 26mm !important; }
-            .rcpt-sheet .r-info { font-size: 13px !important; }
-            .rcpt-sheet .rcpt-tbl { font-size: 12.5px !important; }
-            .rcpt-sheet .rcpt-tbl td { padding: 1px 5px !important; line-height: 1.25 !important; }
-            .rcpt-sheet .r-sig { margin-top: 24px !important; }
-          }
-        `}</style>
-        <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
-        <div className="relative">
-          <div className="r-logo-wrap absolute left-0 -top-1 w-28 text-center">
-            <img src="/logo-mark.png" alt="U-Sabai" className="r-logo w-28 h-28 object-contain mx-auto" />
-            <div className="co-name text-[11px] font-bold leading-snug whitespace-nowrap">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
-          </div>
-          <LaoHeader no={d.receipt_no} date={d.pay_date} />
-        </div>
-        <div className="r-title text-center text-2xl font-bold my-3 underline underline-offset-4">ໃບມອບຮັບເງິນ</div>
-
-        <div className="r-info space-y-1 mt-2">
-          <div className="whitespace-nowrap overflow-hidden">
-            <b>ຜູ້ຂາຍ:</b> <Dot v={sellerName} w="170px" cls="text-[1.1em] font-bold" />, ບ້ານ <Dot v={COMPANY.village} w="120px" />,
-            ເມືອງ <Dot v={COMPANY.district} w="110px" />, ແຂວງ <Dot v={COMPANY.province} w="120px" />.
-          </div>
-          <div className="whitespace-nowrap overflow-hidden">
-            <b>ຜູ້ຊື້:</b> <Dot v={cu.full_name} w="180px" cls="text-[1.1em] font-bold" /> ລະຫັດດິນ <Dot v={c.lots?.code} w="80px" />
-            {" "}ເນື້ອທີ່ <Dot v={c.lots?.size_sqm ? Number(c.lots.size_sqm) + " ຕລມ" : ""} w="90px" /> ລາຄາ <Dot v={fmt(c.sale_price, c.currency)} w="130px" />
-          </div>
-          <div className="whitespace-nowrap overflow-hidden">
-            <b>ທີ່ຕັ້ງດິນ:</b> ບ້ານ <Dot v={pr.village || pr.name} w="160px" /> ເມືອງ <Dot v={pr.district} w="140px" /> ແຂວງ <Dot v={pr.province} w="150px" />
-          </div>
-        </div>
-
-        <table className="rcpt-tbl w-full border-collapse border-2 border-black mt-3 text-center text-[14px]">
-          <thead>
-            <tr className="font-bold">
-              <td className="border-2 border-black p-2 w-14">ລ/ດ</td>
-              <td className="border-2 border-black p-2">ເງິນຊຳລະຄັ້ງນີ້</td>
-              <td className="border-2 border-black p-2">ຍອດທີ່ຍັງເຫຼືອ</td>
-              <td className="border-2 border-black p-2 w-14">ລ/ດ</td>
-              <td className="border-2 border-black p-2">ເງິນຊຳລະຄັ້ງນີ້</td>
-              <td className="border-2 border-black p-2">ຍອດທີ່ຍັງເຫຼືອ</td>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={i} style={{ height: rowMM + "mm" }}>
-                <td className="border-2 border-black px-2 font-bold">{r.L?.label ?? ""}</td>
-                <td className="border-2 border-black px-2 font-bold">{r.L?.paid ? fmt(r.L.paid, cur) : ""}</td>
-                <td className="border-2 border-black px-2">{r.L?.remaining != null ? (r.L.remaining > 0 ? fmt(r.L.remaining, cur) : "ຄົບແລ້ວ") : ""}</td>
-                <td className="border-2 border-black px-2 font-bold">{r.R?.label ?? ""}</td>
-                <td className="border-2 border-black px-2 font-bold">{r.R?.paid ? fmt(r.R.paid, cur) : ""}</td>
-                <td className="border-2 border-black px-2">{r.R?.remaining != null ? (r.R.remaining > 0 ? fmt(r.R.remaining, cur) : "ຄົບແລ້ວ") : ""}</td>
-              </tr>
+      {/* ---- ຄວາມຄືບໜ້າຮັບເງິນງວດ: ຕົວຈິງ vs ຄາດຄະເນ (ແຍກຕາມສະກຸນ) + ຂາຍໃໝ່/ຈ່າຍສົດ ---- */}
+      {tab === "month" && (
+        <div className="grid gap-3 md:grid-cols-3 mb-4">
+          {(monthCurs.length ? monthCurs : ["LAK"]).map((c) => {
+            const act = actByCur[c] || 0, exp = expByCur[c] || 0;
+            const pct = exp > 0 ? Math.min(100, Math.round((act / exp) * 100)) : (act > 0 ? 100 : 0);
+            return (
+              <div key={c} className="bg-white border border-slate-200 rounded-xl p-4">
+                <div className="flex justify-between items-center text-sm mb-2">
+                  <span className="font-semibold text-navy">ຄວາມຄືບໜ້າຮັບເງິນງວດ ({c})</span>
+                  <b className={pct >= 100 ? "text-brand-green" : "text-navy"}>{pct}%</b>
+                </div>
+                <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${pct >= 100 ? "bg-brand-green" : "bg-navy"}`} style={{ width: pct + "%" }} />
+                </div>
+                <div className="flex justify-between text-xs mt-2 text-slate-600">
+                  <span>ຮັບຕົວຈິງ: <b className="text-brand-green">{fmt(act || null, c)}</b></span>
+                  <span>ຄາດຄະເນ: <b className="text-navy">{fmt(exp || null, c)}</b></span>
+                </div>
+              </div>
+            );
+          })}
+          {/* ຍອດລວມ ຂາຍດິນຕອນໃໝ່ + ສັນຍາຈ່າຍສົດ (ຮັບຕົວຈິງພາຍໃນເດືອນ, ທັງ 3 ສະກຸນ) */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4">
+            <div className="font-semibold text-navy text-sm mb-2">ຂາຍດິນຕອນໃໝ່ + ສັນຍາຈ່າຍສົດ</div>
+            {["LAK", "THB", "USD"].map((c) => (
+              <div key={c} className="flex justify-between text-xs mt-1">
+                <span className="text-slate-500">{c}</span>
+                <b className={newSaleByCur[c] ? "text-brand-green" : "text-slate-400"}>{newSaleByCur[c] ? fmt(newSaleByCur[c], c) : "—"}</b>
+              </div>
             ))}
-          </tbody>
-        </table>
-
-        <div className="flex gap-16 mt-4">
-          <label className="flex items-center gap-2 font-bold">
-            <span className="w-6 h-6 border-2 border-black inline-flex items-center justify-center">{cash ? "✓" : ""}</span> ຈ່າຍເງິນສົດ
-          </label>
-          <label className="flex items-center gap-2 font-bold">
-            <span className="w-6 h-6 border-2 border-black inline-flex items-center justify-center">{cash ? "" : "✓"}</span> ຈ່າຍເງິນໂອນ
-          </label>
-        </div>
-
-        <div className="r-sig grid grid-cols-3 gap-8 mt-8 text-center font-bold">
-          <div>ຜູ້ຈ່າຍເງິນ<div className="mt-20 font-bold text-[14px]">{cu.full_name}</div></div>
-          <div>ຜູ້ຮັບເງິນ<div className="mt-20 font-bold text-[14px]">{seller?.full_name}</div></div>
-          <div>ພະຍານ<div className="mt-20"></div></div>
-        </div>
-
-        <div className="no-print text-center text-[11px] text-slate-400 mt-8">
-          ອອກໂດຍລະບົບ U-Sabai Land System · ວັນທີພິມ {today}
-        </div>
-      </div>
-    );
-  }
-
-  // ---------- ໃບຈອງດິນ (layout ທາງການ ຕາມ template ບໍລິສັດ) ----------
-  if (type === "booking") {
-    const cu = d.customers || {}, lo = d.lots || {}, pr = d.projects || {};
-    const cur = d.currency || lo.currency || "LAK";
-    return (
-      <div className="bk-sheet max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[15px] leading-[2.0] text-justify">
-        <style>{`
-          @media print {
-            @page { size: A4 portrait; margin: 10mm 12mm; }
-            .bk-sheet { font-size: 14px !important; line-height: 2.0 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
-            .bk-sheet .b-title { font-size: 18px !important; margin: 8px 0 !important; }
-            .bk-sheet .b-logo-wrap { width: 26mm !important; }
-            .bk-sheet .b-logo { width: 26mm !important; height: 26mm !important; }
-            .bk-sheet .co-name { font-size: 11px !important; }
-            .bk-sheet .b-sig { margin-top: 60px !important; }
-            .bk-sheet .sig-gap { margin-top: 72px !important; }
-          }
-        `}</style>
-        <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ</button>
-        <div className="relative">
-          <div className="b-logo-wrap absolute left-0 -top-1 w-28 text-center">
-            <img src="/logo-mark.png" alt="U-Sabai" className="b-logo w-28 h-28 object-contain mx-auto" />
-            <div className="co-name text-[11px] font-bold leading-snug whitespace-nowrap">ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າ ຈຳກັດຜູ້ດຽວ</div>
-          </div>
-          <LaoHeader no={d.booking_no} date={d.booking_date} />
-        </div>
-        <div className="b-title text-center text-2xl font-bold my-3 underline underline-offset-4">ໃບຈອງດິນ</div>
-
-        <div className="space-y-1">
-          <SellerLine />
-          <ProjectLine pr={pr} />
-          <div>
-            ໄດ້ຮັບການຈອງດິນຈັດສັນລ໋ອກທີ <Dot v={lo.code} w="80px" /> ຂະໜາດ <Dot w="90px" />
-            {" "}ເນື້ອທີ່ດິນ <Dot v={lo.size_sqm ? Number(lo.size_sqm) + " ຕລມ" : null} w="90px" />
-            {" "}ມູນຄ່າ <Dot v={lo.list_price ? fmt(lo.list_price, lo.currency) : null} w="140px" />
-            {" "}ຈາກ <BuyerInline cu={cu} />
           </div>
         </div>
+      )}
 
-        <div className="mt-2 space-y-1">
-          <div>
-            1. ຜູ້ຊື້ໄດ້ວາງເງິນຈອງ (ມັດຈຳ) ຈຳນວນ <Dot v={d.deposit_amount ? fmt(d.deposit_amount, cur) : null} w="160px" /> ໃນວັນທີ <Dot v={fdate(d.booking_date)} w="110px" /><br />
-            (<Dot v={moneyWords(d.deposit_amount, cur)} w="320px" />)
+      {tab === "month" && (
+        <Table cols={["ຊື່ລູກຄ້າ", "ຈຳນວນເງິນ", "ຍອດຄ້າງ", "ງວດ", "ເລກທີສັນຍາ", "ວັນທີຮັບເງິນ", "ຜູ້ຮັບເງິນ", "ໝາຍເຫດ", ""]}
+          empty="ຍັງບໍ່ມີການຮັບເງິນງວດໃນເດືອນນີ້"
+          rows={pgMonth.rows.map((p) => {
+            const li = p.installment_id ? instMap[p.installment_id] : null;
+            return [
+            custBtn(p.contract_id, cmap[p.contract_id]?.customers?.full_name),
+            <b key="a">{fmt(p.amount_received, p.currency)}</b>,
+            remainAfter[p.id] > 0
+              ? <span key="r" className="text-brand-red">{fmt(remainAfter[p.id], cmap[p.contract_id]?.currency)}</span>
+              : <span key="r" className="text-brand-green">ຄົບແລ້ວ ✓</span>,
+            isDown(p) ? "ດາວ" : li ? `ງວດ ${li.seq}` : (p.note?.match(/ງວດ\s*\d+[^·]*/)?.[0]?.trim() || "—"),
+            cmap[p.contract_id]?.contract_no, fdate(p.pay_date),
+            users[p.created_by] || "—",
+            punctual(p),
+            <span key="pr" className="flex gap-1">
+              <a className="btn-o !py-1 !px-2 text-sm" title="ພິມໃບມອບຮັບເງິນ" href={`/print/receipt/${p.id}`} target="_blank">🖨</a>
+              <a className="btn-o !py-1 !px-2 text-sm" title="ບັນທຶກເປັນ PDF ສົ່ງລູກຄ້າ" href={`/print/receipt/${p.id}?auto=1`} target="_blank">📄</a>
+            </span>,
+          ];
+          })} />
+      )}
+      {tab === "month" && <Pager pg={pgMonth} />}
+
+      {tab === "soon" && (
+        <Table cols={["ສັນຍາ", "ລູກຄ້າ", "ເບີໂທ", "ງວດ", "ຄົບກຳນົດ", "ອີກ (ວັນ)", "ຍອດຄ້າງງວດ", ""]}
+          empty="ບໍ່ມີງວດຄົບກຳນົດພາຍໃນ 6 ວັນ"
+          rows={pgSoon.rows.map((i) => [
+            i.contract_no, custBtn(i.contract_id, i.full_name), i.tel || "—",
+            i.seq === 0 ? "ດາວ (ງວດ 0)" : `ງວດ ${i.seq}`, fdate(i.due_date),
+            <Badge key="d" color={i.days_left <= 2 ? "red" : "amber"}>{i.days_left} ວັນ</Badge>,
+            <b key="o">{fmt(i.amount_outstanding, i.currency)}</b>,
+            <button key="r" className="btn-p !py-1 !px-3 text-xs" onClick={() => openReceive(i)}>ຮັບເງິນ</button>,
+          ])} />
+      )}
+      {tab === "soon" && <Pager pg={pgSoon} />}
+
+      {tab === "paid100" && (
+        <Table cols={["ສັນຍາ", "ລູກຄ້າ", "ເບີໂທ", "ຕອນ", "ມູນຄ່າສັນຍາ", "ຊຳລະແລ້ວ", "ໃບຕາດິນ"]}
+          empty="ຍັງບໍ່ມີສັນຍາທີ່ຊຳລະຄົບ 100%"
+          rows={pgPaid.rows.map((c) => [
+            c.contract_no, custBtn(c.id, c.full_name), c.tel || "—", c.lot_code,
+            fmt(c.sale_price, c.currency), <b key="p" className="text-brand-green">{fmt(c.total_paid, c.currency)} ✓</b>,
+            c.deed_stage ? <Badge key="d" color={c.deed_stage === "handed_over" ? "green" : "blue"}>{c.deed_stage}</Badge> : <Badge key="d" color="gray">ຍັງບໍ່ເລີ່ມ</Badge>,
+          ])} />
+      )}
+      {tab === "paid100" && <Pager pg={pgPaid} unit="ສັນຍາ" />}
+
+      {tab === "overdue" && (
+        <Table cols={["ສັນຍາ", "ລູກຄ້າ", "ງວດ", "ຄົບກຳນົດ", "ຕາມກຳນົດ", "ຮັບແລ້ວ", "ສະຖານະ", ""]}
+          rows={pgInst.rows.map((i) => [
+            i.c?.contract_no, custBtn(i.contract_id, i.c?.customers?.full_name),
+            i.seq === 0 ? "ດາວ (ງວດ 0)" : `ງວດ ${i.seq}`,
+            <span key="d" className={i.st === "overdue" ? "text-brand-red" : ""}>{fdate(i.due_date)}</span>,
+            fmt(i.amount_due, i.c?.currency), fmt(i.paid || null, i.c?.currency), ST[i.st],
+            i.st !== "paid" ? (
+              <button key="r" className="btn-p !py-1 !px-3 text-xs" onClick={() => openReceive(i, i.paid)}>ຮັບເງິນ</button>
+            ) : i.payments?.[0]?.id ? (
+              <a key="r" className="btn-o !py-1 !px-3 text-xs" href={`/print/receipt/${i.payments[i.payments.length - 1].id}`} target="_blank">🖨</a>
+            ) : null,
+          ])} />
+      )}
+      {tab === "overdue" && <Pager pg={pgInst} unit="ງວດ" />}
+
+      {/* ---- Modal ລາຍບຸກຄົນ: ການຮັບເງິນກ່ອນ, ຕາຕະລາງງວດ (ແຜນຈ່າຍ) ຢູ່ລຸ່ມ ---- */}
+      <Modal open={!!drill} title={dc ? `${dc.customers?.full_name} — ${dc.contract_no}` : ""} onClose={() => setDrill(null)} wide>
+        {dc && (
+          <div className="space-y-4 text-sm">
+            <div className="flex flex-wrap gap-x-6 gap-y-1">
+              <div>ໂຄງການ: <b>{projects.find((p) => p.id === dc.project_id)?.name || "—"}</b></div>
+              <div>ຕອນດິນ: <b>{dc.lots?.code || "—"}</b></div>
+              <div>ເບີໂທ: <b>{dc.customers?.tel || "—"}</b></div>
+              <div>ມູນຄ່າສັນຍາ: <b>{fmt(dc.sale_price, dc.currency)}</b></div>
+              <div>ເງິນດາວ: <b className="text-navy">{fmt(downPaidByC[dc.id] || null, dc.currency)}</b></div>
+              <div>ຊຳລະແລ້ວ: <b className="text-brand-green">{fmt(dPaid, dc.currency)}</b></div>
+              <div>ຍອດຄ້າງ: <b className="text-brand-red">{fmt(Math.max(Number(dc.sale_price) - dPaid, 0), dc.currency)}</b></div>
+            </div>
+            <div>
+              <div className="font-semibold text-navy mb-1">ການຮັບເງິນ ({dPays.length})</div>
+              <Table cols={["ວັນທີຈ່າຍ", "ງວດ", "ວັນກຳນົດຈ່າຍ", "ຈຳນວນ", "ຍອດຄ້າງຫຼັງຈ່າຍ", "ຜູ້ຮັບເງິນ", "ໝາຍເຫດ", ""]}
+                empty="ຍັງບໍ່ມີການຮັບເງິນ"
+                rows={dPays.map((p) => {
+                  const li = p.installment_id ? instMap[p.installment_id] : null;
+                  return [
+                    fdate(p.pay_date),
+                    isDown(p) ? "ດາວ" : li ? `ງວດ ${li.seq}` : (p.note?.match(/ງວດ\s*\d+[^·]*/)?.[0]?.trim() || "—"),
+                    li?.due_date ? fdate(li.due_date) : "—",
+                    <b key="a">{fmt(p.amount_received, p.currency)}</b>,
+                    remainAfter[p.id] > 0 ? fmt(remainAfter[p.id], dc.currency) : "ຄົບແລ້ວ ✓",
+                    users[p.created_by] || "—",
+                    punctual(p),
+                    <a key="pr" className="btn-o !py-0.5 !px-2 text-xs" href={`/print/receipt/${p.id}`} target="_blank">🖨</a>,
+                  ];
+                })} />
+            </div>
+            <div>
+              {(() => { const left = dInst.filter((i) => i.st !== "paid"); return (<>
+              <div className="font-semibold text-navy mb-1">ຕາຕະລາງງວດ — ຄ້າງ ແລະ ຕ້ອງຊຳລະຕໍ່ໄປ ({left.length})</div>
+              <Table cols={["ງວດ", "ຄົບກຳນົດ", "ຕາມກຳນົດ", "ຮັບແລ້ວ", "ຄ້າງ", "ສະຖານະ"]}
+                empty="✓ ຊຳລະຄົບທຸກງວດແລ້ວ"
+                rows={left.map((i) => [
+                  i.seq === 0 ? "ດາວ" : `ງວດ ${i.seq}`,
+                  i.due_date ? fdate(i.due_date) : (i.due_condition === "after_deed_transfer" ? "ຫຼັງໂອນໃບຕາດິນ" : "—"),
+                  fmt(i.amount_due, dc.currency), fmt(i.paid || null, dc.currency),
+                  Number(i.amount_due) > i.paid ? <b key="o" className="text-brand-red">{fmt(Number(i.amount_due) - i.paid, dc.currency)}</b> : "—",
+                  ST[i.st],
+                ])} />
+              </>); })()}
+            </div>
           </div>
-          <div>
-            2. ຜູ້ຊື້ຕ້ອງມາເຮັດສັນຍາຊື້-ຂາຍ ພາຍໃນວັນທີ <Dot v={d.contract_due_date ? fdate(d.contract_due_date) : null} w="110px" />.
-          </div>
-          <div className="pl-4 text-[12.5px]">
-            <b>ໝາຍເຫດ:</b> ຫາກກາຍກຳນົດເຮັດສັນຍາຂ້າງເທິງໂດຍບໍ່ແຈ້ງເຫດຜົນ, ບໍລິສັດສະຫງວນສິດພິຈາລະນາການຈອງຄືນ
-            ແລະ ເງື່ອນໄຂການຄືນເງິນຈອງແມ່ນເປັນໄປຕາມນະໂຍບາຍຂອງບໍລິສັດ.
-          </div>
-        </div>
+        )}
+      </Modal>
 
-        <div className="b-sig grid grid-cols-2 gap-10 mt-14 text-center font-bold">
-          <div>ລາຍເຊັນຜູ້ຈອງ<div className="sig-gap mt-28 font-bold text-[15px]">{cu.full_name}</div></div>
-          <div>ລາຍເຊັນຜູ້ຮັບຈອງ<div className="sig-gap mt-28 font-bold text-[15px]">{seller?.full_name}</div></div>
-        </div>
+      {/* ---- ຟອມເພີ່ມການຊຳລະງວດ: ເລືອກໂຄງການ → ຕອນດິນ → ລູກຄ້າ/ງວດ auto ---- */}
+      <Modal open={!!addForm} title="💰 ເພີ່ມການຊຳລະງວດ" onClose={() => setAddForm(null)}>
+        {addForm && (
+          <form onSubmit={saveAdd} className="grid grid-cols-2 gap-3">
+            <Field label="ໂຄງການ *">
+              <select className="inp" required value={addForm.project_id || ""} onChange={(e) => pickAddProj(e.target.value)}>
+                <option value="">— ເລືອກ —</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
+              </select>
+            </Field>
+            <Field label="ຕອນດິນ *">
+              <select className="inp" required value={addForm.contract_id || ""} onChange={(e) => pickAddContract(e.target.value)} disabled={!addForm.project_id}>
+                <option value="">{addForm.project_id ? "— ເລືອກ —" : "ເລືອກໂຄງການກ່ອນ"}</option>
+                {(addForm.contracts || []).map((c) => (
+                  <option key={c.id} value={c.id}>{c.lots?.code} — {c.customers?.full_name} ({c.contract_no})</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="ຊື່ລູກຄ້າ (auto)"><input className="inp bg-slate-50" disabled value={addForm.c?.customers?.full_name || "—"} /></Field>
+            <Field label="ງວດທີ (auto ຕໍ່ຈາກທີ່ຊຳລະຜ່ານມາ)">
+              <input className="inp bg-slate-50" disabled value={
+                !addForm.contract_id ? "—"
+                : addForm.nextInst
+                  ? `${addForm.nextInst.seq === 0 ? "ດາວ (ງວດ 0)" : "ງວດ " + addForm.nextInst.seq} · ກຳນົດ ${addForm.nextInst.due_date ? fdate(addForm.nextInst.due_date) : "—"}`
+                  : "ຈ່າຍຄົບທຸກງວດແລ້ວ (ບັນທຶກເປັນຈ່າຍນອກງວດ)"} />
+            </Field>
+            <Field label="ຈຳນວນເງິນ *">
+              <MoneyInput required value={addForm.amount_received} onChange={(v) => setAddForm({ ...addForm, amount_received: v })} />
+            </Field>
+            <Field label="ສະກຸນເງິນ">
+              <select className="inp" value={addForm.currency} onChange={(e) => setAddForm({ ...addForm, currency: e.target.value })}>
+                <option>LAK</option><option>THB</option><option>USD</option>
+              </select>
+            </Field>
+            <Field label="ວັນທີຮັບເງິນ *"><input className="inp" type="date" required value={addForm.pay_date} onChange={(e) => setAddForm({ ...addForm, pay_date: e.target.value })} /></Field>
+            <Field label="ຊ່ອງທາງ">
+              <select className="inp" value={addForm.channel} onChange={(e) => setAddForm({ ...addForm, channel: e.target.value })}>
+                <option>ເງິນສົດ</option><option>ໂອນ BCEL</option><option>ໂອນ LDB</option><option>ໂອນທະນາຄານອື່ນ</option>
+              </select>
+            </Field>
+            <div className="col-span-2 text-xs bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-emerald-800">
+              ເລກໃບຮັບເງິນອອກອັດຕະໂນມັດ (R-2026-XXXX) · ບັນທຶກແລ້ວກົດ 🖨 ຫຼື 📄 ໃນ tab ການຮັບເງິນງວດປະຈຳເດືອນ ເພື່ອສົ່ງໃຫ້ລູກຄ້າ
+            </div>
+            <div className="col-span-2"><button className="btn-p w-full">💾 ບັນທຶກການຊຳລະ</button></div>
+          </form>
+        )}
+      </Modal>
 
-        <div className="no-print text-center text-[11px] text-slate-400 mt-8">
-          ອອກໂດຍລະບົບ U-Sabai Land System · ວັນທີພິມ {today}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-[700px] mx-auto p-8 bg-white min-h-screen text-slate-800">
-      <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
-
-      <div className="text-center border-b-2 border-navy pb-4 mb-5">
-        <div className="text-2xl font-bold text-navy tracking-wider">U-<span className="text-slate-500">SABAI</span></div>
-        <div className="text-[10px] tracking-[4px] text-slate-500">LAND AND HOUSE</div>
-        <div className="text-base font-bold text-navy mt-3">{TITLES[type]}</div>
-      </div>
-
-      {type === "handover" && (<>
-        <Row l="ເລກສັນຍາ" v={d.contracts?.contract_no} />
-        <Row l="ໂຄງການ / ຕອນດິນ" v={`${d.contracts?.projects?.name} / ${d.contracts?.lots?.code} (${Number(d.contracts?.lots?.size_sqm)} ຕລມ)`} />
-        <Row l="ເລກໃບຕາດິນໃໝ່" v={d.new_deed_no} />
-        <Row l="ວັນທີອອກໃບຕາດິນ" v={fdate(d.issue_date)} />
-        <Row l="ວັນທີສົ່ງມອບ" v={fdate(d.handover_date)} />
-        <Row l="ຜູ້ຮັບມອບ" v={d.received_by || d.contracts?.customers?.full_name} />
-        <div className="text-[13px] leading-6 my-5 bg-slate-50 rounded-xl p-4">
-          ບໍລິສັດ ຢູສະບາຍ ແລນ ແອນ ເຮົ້າສ໌ ໄດ້ສົ່ງມອບໃບຕາດິນສະບັບແທ້ ຕາມລາຍລະອຽດຂ້າງເທິງ
-          ໃຫ້ແກ່ຜູ້ຊື້ຄົບຖ້ວນແລ້ວ ແລະ ຜູ້ຊື້ໄດ້ກວດກາຮັບເອົາຮຽບຮ້ອຍແລ້ວ.
-        </div>
-      </>)}
-
-      <div className="grid grid-cols-2 gap-10 mt-12 text-center text-[13px]">
-        <div><div className="border-t border-slate-400 pt-2 mt-14">ຜູ້ຮັບເງິນ / ຕາງໜ້າບໍລິສັດ</div></div>
-        <div><div className="border-t border-slate-400 pt-2 mt-14">{type === "handover" ? "ຜູ້ຮັບມອບ" : "ລູກຄ້າ / ຜູ້ຈ່າຍເງິນ"}</div></div>
-      </div>
-      <div className="text-center text-[11px] text-slate-400 mt-8">
-        ອອກໂດຍລະບົບ U-Sabai Land System · ວັນທີພິມ {today}
-      </div>
-    </div>
+      <Modal open={!!form} title="💰 ບັນທຶກຮັບເງິນ" onClose={() => setForm(null)}>
+        {form && (
+          <form onSubmit={receive} className="grid grid-cols-2 gap-3">
+            <div className="col-span-2 text-sm text-slate-500">{form.label}</div>
+            <Field label="ຈຳນວນຕາມກຳນົດ"><input className="inp bg-slate-50" disabled value={Number(form.amount_due).toLocaleString()} /></Field>
+            <Field label="ຈຳນວນຮັບຕົວຈິງ (ຄີແກ້ໄຂໄດ້) *">
+              <MoneyInput required value={form.amount_received} onChange={(v) => setForm({ ...form, amount_received: v })} />
+            </Field>
+            <Field label="ວັນທີຮັບເງິນ *"><input className="inp" type="date" required value={form.pay_date} onChange={(e) => setForm({ ...form, pay_date: e.target.value })} /></Field>
+            <Field label="ສະກຸນເງິນ">
+              <select className="inp" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })}>
+                <option>LAK</option><option>THB</option><option>USD</option>
+              </select>
+            </Field>
+            <Field label="ຊ່ອງທາງ">
+              <select className="inp" value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value })}>
+                <option>ເງິນສົດ</option><option>ໂອນ BCEL</option><option>ໂອນ LDB</option><option>ໂອນທະນາຄານອື່ນ</option>
+              </select>
+            </Field>
+            <Field label="ເລກໃບຮັບເງິນ"><input className="inp bg-slate-50" disabled value="ອອກອັດຕະໂນມັດ (R-2026-XXXX)" /></Field>
+            <div className="col-span-2 text-xs bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-emerald-800">
+              ຮັບໜ້ອຍກວ່າກຳນົດ = ຍອດຄ້າງຍັງຄົງຄ້າງໃນງວດນີ້ · ບັນທຶກແລ້ວກົດ 🖨 ໃບມອບຮັບເງິນ ໃນ tab ການຮັບເງິນງວດປະຈຳເດືອນ
+            </div>
+            <div className="col-span-2"><button className="btn-p w-full">💾 ບັນທຶກຮັບເງິນ</button></div>
+          </form>
+        )}
+      </Modal>
+    </>
   );
 }
+
+export default function Page() { return <Shell><Payments /></Shell>; }
