@@ -66,6 +66,7 @@ function Bookings() {
       deposit_note: form.deposit_note || null,
       contract_due_date: form.contract_due_date, status: "active",
       sales_person: profile?.full_name || null,
+      created_by: profile?.id || null, // ຜູ້ໃຊ້ລະບົບທີ່ອອກໃບມັດຈຳ — ໃຊ້ເປັນ "ຜູ້ຂາຍ" ຕອນປຣິນ + ກວດຄືນ
     });
     if (error) return alert("ຜິດພາດ: " + error.message);
     await supabase.from("lots").update({ status: "reserved" }).eq("id", form.lot_id);
@@ -90,13 +91,14 @@ function Bookings() {
           ? setForm({ booking_date: today, status: "active", mode: "new", currency: "LAK" })
           : alert("ກະລຸນາເລືອກໂຄງການດຽວກ່ອນ ຈຶ່ງອອກໃບສັນຍາມັດຈຳໄດ້")}>+ ອອກໃບສັນຍາມັດຈຳ</button>
       </div>
-      <Table cols={["ເລກທີ", "ລູກຄ້າ", "ຕອນ", "ວັນທີ", "ເງິນມັດຈຳ", "ກຳນົດເຮັດສັນຍາ", "ສະຖານະ", ""]}
+      <Table cols={["ເລກທີ", "ລູກຄ້າ", "ຕອນ", "ວັນທີ", "ເງິນມັດຈຳ", "ກຳນົດເຮັດສັນຍາ", "ຜູ້ອອກໃບມັດຈຳ", "ສະຖານະ", ""]}
         rows={rows.map((b) => {
           const over = b.status === "active" && b.contract_due_date < today;
           return [
             <b key="n">{b.booking_no}</b>, b.customers?.full_name, b.lots?.code,
             fdate(b.booking_date), fmt(b.deposit_amount, b.currency),
             <span key="d" className={over ? "text-brand-red font-semibold" : ""}>{fdate(b.contract_due_date)}{over && " ⚠"}</span>,
+            <span key="sp" className="text-xs">{b.sales_person || "—"}</span>,
             <Badge key="s" color={over ? "red" : ST_COLOR[b.status]}>{over ? "ກາຍກຳນົດ" : BOOKING_STATUS[b.status]}</Badge>,
             <span key="a" className="flex gap-1">
               <a className="btn-o !py-1 !px-2 text-xs" href={`/print/deposit/${b.id}`} target="_blank">🖨 ໃບສັນຍາມັດຈຳ</a>
