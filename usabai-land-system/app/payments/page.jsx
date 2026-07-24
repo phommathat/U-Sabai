@@ -336,12 +336,15 @@ function Payments() {
       {tab === "paid100" && <Pager pg={pgPaid} unit="ສັນຍາ" />}
 
       {tab === "overdue" && (
-        <Table cols={["ສັນຍາ", "ລູກຄ້າ", "ງວດ", "ຄົບກຳນົດ", "ຕາມກຳນົດ", "ຮັບແລ້ວ", "ສະຖານະ", ""]}
+        <Table cols={["ສັນຍາ", "ລູກຄ້າ", "ເບີໂທ", "ງວດ", "ຄົບກຳນົດ", "ຕາມກຳນົດ", "ສະຖານະ", ""]}
           rows={pgInst.rows.map((i) => [
             i.c?.contract_no, custBtn(i.contract_id, i.c?.customers?.full_name),
+            i.c?.customers?.tel
+              ? <a key="t" className="text-navy hover:text-brand-amber" href={`tel:${i.c.customers.tel}`}>{i.c.customers.tel}</a>
+              : <span key="t" className="text-slate-400">—</span>,
             i.seq === 0 ? "ດາວ (ງວດ 0)" : `ງວດ ${i.seq}`,
             <span key="d" className={i.st === "overdue" ? "text-brand-red" : ""}>{fdate(i.due_date)}</span>,
-            fmt(i.amount_due, i.c?.currency), fmt(i.paid || null, i.c?.currency), ST[i.st],
+            fmt(i.amount_due, i.c?.currency), ST[i.st],
             i.st !== "paid" ? (
               <button key="r" className="btn-p !py-1 !px-3 text-xs" onClick={() => openReceive(i, i.paid)}>ຮັບເງິນ</button>
             ) : i.payments?.[0]?.id ? (
