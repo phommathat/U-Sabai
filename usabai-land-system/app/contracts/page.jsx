@@ -91,6 +91,7 @@ function Contracts() {
       cash_pay1: num(form.cash_pay1), cash_pay2: num(form.cash_pay2),
       balance_due_when: form.balance_due_when, status: form.status,
       sales_person: profile?.full_name || null,
+      created_by: profile?.id || null, // ຜູ້ໃຊ້ລະບົບທີ່ອອກສັນຍາ — ໃຊ້ເປັນ "ຜູ້ຂາຍ" ຕອນປຣິນ + ກວດຄືນ
     };
     const { data, error } = await supabase.from("contracts").insert(c).select().single();
     if (error) return alert("ຜິດພາດ: " + error.message);
@@ -103,6 +104,7 @@ function Contracts() {
         contract_id: data.id, pay_date: c.sign_date, amount_received: form.booking_fee,
         currency: c.currency, channel: "ເງິນສົດ", receipt_no: rno || null,
         note: "ເງິນມັດຈຳມື້ຈອງ (ບັນທຶກ auto ຈາກຟອມສັນຍາ)",
+        created_by: profile?.id || null,
       });
     }
     await supabase.from("lots").update({ status: "sold" }).eq("id", c.lot_id);
@@ -126,7 +128,7 @@ function Contracts() {
           + ສ້າງສັນຍາໃໝ່
         </button>
       </div>
-      <Table cols={["ເລກສັນຍາ", "ລູກຄ້າ", "ຕອນ", "ປະເພດ", "ມູນຄ່າ", "ຊຳລະແລ້ວ", "ຍອດຄ້າງ", "%", "ສະຖານະ", ""]}
+      <Table cols={["ເລກສັນຍາ", "ລູກຄ້າ", "ຕອນ", "ປະເພດ", "ມູນຄ່າ", "ຊຳລະແລ້ວ", "ຍອດຄ້າງ", "%", "ຜູ້ອອກສັນຍາ", "ສະຖານະ", ""]}
         rows={pg.rows.map((c) => {
           const b = bal[c.id] || {};
           const done = (b.pct_paid || 0) >= 100;
@@ -142,6 +144,7 @@ function Contracts() {
               </div>
               <div className="text-[10px] text-slate-400">{b.pct_paid || 0}%{b.deed_eligible && " · ✓ ເກນ 20%"}</div>
             </div>,
+            <span key="sp" className="text-xs">{c.sales_person || "—"}</span>,
             <Badge key="s" color={ST_COLOR[c.status]}>{CONTRACT_STATUS[c.status]}</Badge>,
             <a key="pr" className="btn-o !py-1 !px-2 text-xs" href={`/print/contract/${c.id}`} target="_blank">🖨</a>,
           ];
@@ -162,7 +165,7 @@ function Contracts() {
             <Field label="ລູກຄ້າ">
               <div className="flex gap-3 items-center h-full text-sm">
                 <label className="flex items-center gap-1"><input type="radio" checked={isNew} onChange={() => setForm({ ...form, mode: "new", customer_id: null })} /> ລູກຄ້າໃໝ່</label>
-                <label className="flex items-center gap-1"><input type="radio" checked={!isNew} onChange={() => setForm({ ...form, mode: "old" })} /> ລູກຄ້າເກົ່າ/ມາຈາກໃບຈອງ</label>
+                <label className="flex items-center gap-1"><input type="radio" checked={!isNew} onChange={() => setForm({ ...form, mode: "old" })} /> ລູກຄ້າເກົ່າ/ມາຈາກໃບສັນຍາມັດຈຳ</label>
               </div>
             </Field>
             {isNew ? (<>
