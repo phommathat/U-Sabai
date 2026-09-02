@@ -68,12 +68,20 @@ function Payments() {
 
   // ---- ຈັດສັນຍອດແບບສະສົມ (FIFO) ----
   // ກົດ: ຈ່າຍບໍ່ເຕັມງວດ ≠ ຄ້າງຈ່າຍ · ຈ່າຍ 2-3 ເທົ່າ = ຄວບງວດທັດໄປອັດຕະໂນມັດ
-  const isDown = (p) => (p.note || "").includes("ຈ່າຍກ່ອນ");
-  const downPaidByC = {}; const instPoolByC = {};
+  // ເງິນດາວ = ຜູກກັບ ງວດ 0 (ວິທີໃໝ່) ຫຼື ໝາຍເຫດມີຄຳວ່າ "ຈ່າຍກ່ອນ" (ຂໍ້ມູນເກົ່າ)
+  const isDown = (p) => {
+    const li = p.installment_id ? instMap[p.installment_id] : null;
+    if (li) return li.seq === 0;
+    return (p.note || "").includes("ຈ່າຍກ່ອນ");
+  };
+  // ເງິນມັດຈຳມື້ຈອງ (ສັນຍາຈ່າຍສົດບໍ່ມີ ງວດ 0) — ຍັງນັບເຂົ້າ pool ຄ່າງວດ ແຕ່ສະແດງແຍກໃນຫົວບິນ
+  const isDeposit = (p) => !isDown(p) && (p.note || "").includes("ເງິນມັດຈຳ");
+  const downPaidByC = {}; const instPoolByC = {}; const depositByC = {};
   hist.forEach((p) => {
     const a = Number(p.amount_received || 0);
     if (isDown(p)) downPaidByC[p.contract_id] = (downPaidByC[p.contract_id] || 0) + a;
     else instPoolByC[p.contract_id] = (instPoolByC[p.contract_id] || 0) + a;
+    if (isDeposit(p)) depositByC[p.contract_id] = (depositByC[p.contract_id] || 0) + a;
   });
   const enrich = (() => {
     const byC = {};
@@ -363,7 +371,7 @@ function Payments() {
               <div>ຕອນດິນ: <b>{dc.lots?.code || "—"}</b></div>
               <div>ເບີໂທ: <b>{dc.customers?.tel || "—"}</b></div>
               <div>ມູນຄ່າສັນຍາ: <b>{fmt(dc.sale_price, dc.currency)}</b></div>
-              <div>ເງິນດາວ: <b className="text-navy">{fmt(downPaidByC[dc.id] || null, dc.currency)}</b></div>
+              <div>ເງິນດາວ/ມັດຈຳ: <b className="text-navy">{fmt((downPaidByC[dc.id] || 0) + (depositByC[dc.id] || 0) || null, dc.currency)}</b></div>
               <div>ຊຳລະແລ້ວ: <b className="text-brand-green">{fmt(dPaid, dc.currency)}</b></div>
               <div>ຍອດຄ້າງ: <b className="text-brand-red">{fmt(Math.max(Number(dc.sale_price) - dPaid, 0), dc.currency)}</b></div>
             </div>
