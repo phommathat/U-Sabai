@@ -9,7 +9,7 @@ const ST_COLOR = { booking: "amber", paying: "blue", overdue: "red", completed: 
 const num = (v) => (v === "" || v == null ? null : v);
 
 function Contracts() {
-  const { projectId, projectIds, profile } = useApp();
+  const { projectId, projectIds, project, profile } = useApp();
   const [rows, setRows] = useState([]);
   const [bal, setBal] = useState({});
   const [lots, setLots] = useState([]);
@@ -76,9 +76,23 @@ function Contracts() {
       if (!customerId) return alert("ກະລຸນາເລືອກລູກຄ້າ");
       await supabase.from("customers").update(custData).eq("id", customerId);
     }
-    // 2) ອອກເລກສັນຍາ 2026-XXX (atomic ກັນເລກຊ້ຳ)
-    const { data: contractNo, error: numErr } = await supabase.rpc("next_doc_no", { p_doc_type: "contract" });
-    if (numErr) return alert("ອອກເລກສັນຍາບໍ່ໄດ້: " + numErr.message);
+    // 2) ອອກເລກສັນຍາ ຕາມກົດ ໂຄງການ-ປີ-ຕອນ  ເຊັ່ນ P04-26-B1
+    //    (ຖ້າຕອນນີ້ເຄີຍມີສັນຍາແລ້ວ — ເຊັ່ນ ຍົກເລີກແລ້ວຂາຍໃໝ່ — ຕໍ່ທ້າຍ -2, -3 …)
+    let contractNo = null;
+    const lotCode = lots.find((x) => x.id === form.lot_id)?.code;
+    if (project?.code && lotCode) {
+      const yy = String(new Date(form.sign_date).getFullYear()).slice(2);
+      const base = `${project.code}-${yy}-${lotCode}`;
+      const { data: dup } = await supabase.from("contracts").select("contract_no").like("contract_no", `${base}%`);
+      const taken = new Set((dup || []).map((d) => d.contract_no));
+      contractNo = base;
+      for (let i = 2; taken.has(contractNo); i++) contractNo = `${base}-${i}`;
+    } else {
+      // ສຳຮອງ: ບໍ່ຮູ້ລະຫັດໂຄງການ/ຕອນ → ໃຊ້ເລກລຳດັບເອກະສານ 2026-XXX
+      const { data: no, error: numErr } = await supabase.rpc("next_doc_no", { p_doc_type: "contract" });
+      if (numErr) return alert("ອອກເລກສັນຍາບໍ່ໄດ້: " + numErr.message);
+      contractNo = no;
+    }
     // 3) ບັນທຶກສັນຍາ — ພະນັກງານຂາຍດຶງ auto ຈາກ account ທີ່ login
     const c = {
       contract_no: contractNo, project_id: projectId, lot_id: form.lot_id, customer_id: customerId,
@@ -96,16 +110,33 @@ function Contracts() {
     const { data, error } = await supabase.from("contracts").insert(c).select().single();
     if (error) return alert("ຜິດພາດ: " + error.message);
     const inst = buildInstallments(c).map((r) => ({ ...r, contract_id: data.id }));
-    if (inst.length) await supabase.from("installments").insert(inst);
-    // 4) ເງິນມື້ຈອງ (ຮັບແລ້ວ) → ບັນທຶກເປັນ payment ອັດຕະໂນມັດ ເພື່ອນັບເຂົ້າເກນ 20%
-    if (Number(form.booking_fee) > 0) {
-      const { data: rno } = await supabase.rpc("next_receipt_no");
-      await supabase.from("payments").insert({
-        contract_id: data.id, pay_date: c.sign_date, amount_received: form.booking_fee,
-        currency: c.currency, channel: "ເງິນສົດ", receipt_no: rno || null,
-        note: "ເງິນມັດຈຳມື້ຈອງ (ບັນທຶກ auto ຈາກຟອມສັນຍາ)",
+    let instRows = [];
+    if (inst.length) {
+      const { data: ins } = await supabase.from("installments").insert(inst).select("id,seq");
+      instRows = ins || [];
+    }
+    // 4) ເງິນທີ່ຮັບແລ້ວມື້ເຮັດສັນຍາ → ບັນທຶກເປັນ payment ອັດຕະໂນມັດ (ນັບເຂົ້າເກນ 20% ແລະ ຍອດຊຳລະແລ້ວ)
+    //    4.1 ເງິນມື້ຈອງ/ມັດຈຳ · 4.2 ເງິນດາວ (ງວດ 0) — ຜູກ installment_id ໃຫ້ ງວດ 0 ຂຶ້ນ "ຮັບແລ້ວ"
+    const autoPays = [];
+    if (Number(form.booking_fee) > 0)
+      autoPays.push({
+        contract_id: data.id, installment_id: null, pay_date: c.sign_date,
+        amount_received: form.booking_fee, currency: c.currency, channel: "ເງິນສົດ",
+        note: "ເງິນມັດຈຳມື້ຈອງ (ບັນທຶກ auto ຈາກຟອມສັນຍາ)", created_by: profile?.id || null,
+      });
+    if (c.pay_type === "installment" && Number(form.down_payment) > 0 && form.down_received !== false)
+      autoPays.push({
+        contract_id: data.id,
+        installment_id: instRows.find((r) => r.seq === 0)?.id || null,
+        pay_date: c.sign_date, amount_received: form.down_payment,
+        currency: c.currency, channel: "ເງິນສົດ",
+        // ຄຳວ່າ "ຈ່າຍກ່ອນ" ຈຳເປັນ — ໜ້າ "ການຊຳລະ" ໃຊ້ແຍກເງິນດາວອອກຈາກເງິນຄ່າງວດ
+        note: "ຈ່າຍກ່ອນ — ເງິນດາວມື້ເຮັດສັນຍາ (ບັນທຶກ auto ຈາກຟອມສັນຍາ)",
         created_by: profile?.id || null,
       });
+    for (const pay of autoPays) {
+      const { data: rno } = await supabase.rpc("next_receipt_no");
+      await supabase.from("payments").insert({ ...pay, receipt_no: rno || null });
     }
     await supabase.from("lots").update({ status: "sold" }).eq("id", c.lot_id);
     setForm(null); load();
@@ -204,7 +235,14 @@ function Contracts() {
               <Field label="ລາຍລະອຽດການຈ່າຍ (ຮູບແບບອື່ນ)"><input className="inp" value={form.pay_other || ""} placeholder="ເຊັ່ນ: ໂອນຜ່ານ BCEL One 2 ງວດ..." onChange={(e) => setForm({ ...form, pay_other: e.target.value })} /></Field>
             )}
             {isInst && (<>
-              <Field label="ເງິນມື້ເຮັດສັນຍາ"><input className="inp" type="number" value={form.down_payment || ""} onChange={(e) => setForm({ ...form, down_payment: e.target.value })} /></Field>
+              <Field label="ເງິນມື້ເຮັດສັນຍາ (ເງິນດາວ)">
+                <input className="inp" type="number" value={form.down_payment || ""} onChange={(e) => setForm({ ...form, down_payment: e.target.value })} />
+                <label className="flex items-center gap-1 text-xs mt-1">
+                  <input type="checkbox" checked={form.down_received !== false}
+                    onChange={(e) => setForm({ ...form, down_received: e.target.checked })} />
+                  ຮັບເງິນນີ້ແລ້ວ — ບັນທຶກເປັນລາຍການຮັບເງິນ ວັນທີເຮັດສັນຍາ
+                </label>
+              </Field>
               <Field label="ຈຳນວນງວດ *"><input className="inp" type="number" required value={form.n_installments || ""} onChange={(e) => setForm({ ...form, n_installments: e.target.value })} /></Field>
               <Field label="ຄາບການຈ່າຍ">
                 <select className="inp" value={form.installment_period_months} onChange={(e) => setForm({ ...form, installment_period_months: e.target.value })}>
