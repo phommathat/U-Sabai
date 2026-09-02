@@ -71,18 +71,40 @@ export const BOOKING_STATUS = {
   cancelled: "ຍົກເລີກ", refunded: "ຄືນເງິນແລ້ວ",
 };
 
+// ບວກເດືອນແບບ "ຄ້າງວັນທີເດີມ": ວັນທີ 30/31 ຕົກເດືອນສັ້ນ → ໃຊ້ວັນສຸດທ້າຍຂອງເດືອນນັ້ນ
+// (JS setMonth ຈະເລື່ອນ 30 ກ.ພ. ໄປເປັນ 2 ມີນາ — ເຮັດໃຫ້ວັນກຳນົດຈ່າຍຜິດ)
+export function addMonthsKeepDay(isoDate, n) {
+  const d = new Date(isoDate);
+  const day = d.getDate();
+  const t = new Date(d.getFullYear(), d.getMonth() + n, 1);
+  const lastDay = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  t.setDate(Math.min(day, lastDay));
+  const p = (v) => String(v).padStart(2, "0");
+  return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`;
+}
+
 // ສ້າງຕາຕະລາງງວດ: ຜ່ອນ (ຄາບ 1/3/6 ເດືອນ) ຫຼື ສົດ (ງວດ 1/2 + ສ່ວນທີ່ເຫຼືອ)
 export function buildInstallments(c) {
   const rows = [];
   if (c.pay_type === "installment") {
-    if (c.down_payment > 0)
-      rows.push({ seq: 0, due_date: c.sign_date, amount_due: c.down_payment });
+    const down = Number(c.down_payment || 0);
+    if (down > 0)
+      rows.push({ seq: 0, due_date: c.sign_date, amount_due: down });
     const per = Number(c.installment_period_months || 1);
-    const start = new Date(c.first_due_date || c.sign_date);
-    for (let k = 1; k <= Number(c.n_installments || 0); k++) {
-      const d = new Date(start);
-      d.setMonth(d.getMonth() + (k - 1) * per);
-      rows.push({ seq: k, due_date: d.toISOString().slice(0, 10), amount_due: c.installment_amt });
+    const n = Number(c.n_installments || 0);
+    const amt = Number(c.installment_amt || 0);
+    const start = c.first_due_date || c.sign_date;
+    // ງວດສຸດທ້າຍຮັບເສດ: ບໍລິສັດປັດຄ່າງວດເປັນເລກກົມ (ເຊັ່ນ 17,495) ແລ້ວໃຫ້ງວດສຸດທ້າຍດູດເສດ
+    // → ດາວ + ທຸກງວດ = ລາຄາຂາຍ ພໍດີ (ໃຊ້ສະເພາະເມື່ອເສດນ້ອຍກວ່າ 1 ງວດ)
+    const rest = Number(c.sale_price || 0) - down;
+    const lastAmt = rest - amt * (n - 1);
+    const useLast = n > 0 && amt > 0 && rest > 0 && lastAmt > 0 && Math.abs(lastAmt - amt) < amt;
+    for (let k = 1; k <= n; k++) {
+      rows.push({
+        seq: k,
+        due_date: addMonthsKeepDay(start, (k - 1) * per),
+        amount_due: k === n && useLast ? lastAmt : amt,
+      });
     }
   } else if (c.pay_type === "cash") {
     let seq = 1, paid = 0;
