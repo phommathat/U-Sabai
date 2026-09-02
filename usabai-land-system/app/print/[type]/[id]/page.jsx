@@ -427,12 +427,15 @@ export default function PrintPage() {
             border-right: 0 !important; border-bottom: 0 !important; }
           /* ກຸ່ມລາຍເຊັນ: ວາງ absolute ທັງໝົດ → ຍັບໄປຂວາ ແລະ ລົງລຸ່ມ ໃຫ້ຂອບລຸ່ມ
              ຢູ່ລະດັບດຽວກັນກັບແຖວ "ຮູບແບບການຈ່າຍເງິນ" (ລົ້ນອອກນອກຕາຕະລາງໄດ້ ເພາະບໍ່ມີເສັ້ນຂວາ/ລຸ່ມ) */
-          .rcpt-sheet .r-sig-label { position: absolute; left: 24mm; top: 17mm; width: 40mm;
+          .rcpt-sheet .r-sig-label { position: absolute; left: 25mm; top: 6mm; width: 40mm;
             text-align: center; font-size: 16px; }
-          .rcpt-sheet .stamp { position: absolute; left: 30mm; top: 25mm; width: 28mm;
+          /* ຂະໜາດຈິງ: ວົງນອກແປດຫຼ່ຽມ ≈ 36mm (ໄຟລ໌ມີ padding ~7% → width 38.5mm)
+             ອ້າງອີງ: ວົງນອກ/ວົງໃນຊັ້ນ 2 ໃນຮູບ = 747/542 px = 1.378 ເທົ່າ */
+          .rcpt-sheet .stamp { position: absolute; left: 26mm; top: 14.5mm; width: 38.5mm;
             transform: rotate(-2deg); opacity: .9; pointer-events: none; }
           /* ຜູກທັງ left ແລະ right → ຊື່ຍາວຈະຕັດແຖວລົງ ບໍ່ລົ້ນອອກນອກຂອບເຈ້ຍ */
-          .rcpt-sheet .r-name { position: absolute; left: 48mm; right: 1mm; top: 45mm;
+          .rcpt-sheet .r-payer { font-size: 16px; }
+          .rcpt-sheet .r-name { position: absolute; left: 53mm; right: 1mm; top: 46mm;
             text-align: left; line-height: 1.25; font-weight: 700; font-size: 16px; }
           @media print {
             @page { size: A4 portrait; margin: 10mm 12mm; }
@@ -512,6 +515,9 @@ export default function PrintPage() {
             <span className="w-6 h-6 border-2 border-black inline-flex items-center justify-center">{cash ? "" : "✓"}</span> ຈ່າຍເງິນໂອນ
           </label>
         </div>
+
+        {/* ຜູ້ຈ່າຍ = ຊື່ລູກຄ້າຈາກລະບົບ · ບໍ່ຕ້ອງເວັ້ນບ່ອນເຊັນ */}
+        <div className="r-payer font-bold mt-3">ຜູ້ຈ່າຍ: {cu.full_name || "—"}</div>
 
         <div className="no-print text-center text-[11px] text-slate-400 mt-8">
           ອອກໂດຍລະບົບ U-Sabai Land System · ວັນທີພິມ {today}
