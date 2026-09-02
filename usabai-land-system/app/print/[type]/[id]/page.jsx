@@ -51,7 +51,6 @@ export default function PrintPage() {
   const [d, setD] = useState(null);
   const [seller, setSeller] = useState(null); // profile ຜູ້ໃຊ້ທີ່ login (fallback)
   const [creators, setCreators] = useState({}); // id → ຊື່ຜູ້ໃຊ້ລະບົບທີ່ອອກເອກະສານ (created_by)
-  const [rem, setRem] = useState(null); // ຍອດເຫຼືອຫຼັງການຊຳລະຄັ້ງນີ້ (ໃບມອບຮັບເງິນ)
   const [rcptRows, setRcptRows] = useState([]); // ແຖວຕາຕະລາງໃບມອບຮັບເງິນ (ດາວ+ງວດ ພ້ອມປະຫວັດຊຳລະ)
   const [firstPay, setFirstPay] = useState(0); // ເງິນຮັບຄັ້ງທຳອິດ (fallback ເງິນດາວ/ງວດ 1 ຂອງສັນຍາ import)
   const [err, setErr] = useState("");
@@ -411,20 +410,33 @@ export default function PrintPage() {
     const cur = c.currency;
     // ແຖວ = ດາວ + ງວດ (ຈາກ rcptRows ທີ່ດຶງປະຫວັດ) · ແບ່ງ 2 ຝັ່ງ (ດາວ,ງວດ1.. | ງວດ..)
     const src = rcptRows.length ? rcptRows : ["ດາວ", ...Array.from({ length: Number(c.n_installments || 0) }, (_, i) => `ງວດ${i + 1}`)].map((l) => ({ label: l, paid: 0, remaining: null }));
-    const half = Math.max(1, Math.ceil(src.length / 2));
-    const rows = Array.from({ length: half }, (_, i) => ({ L: src[i] || null, R: src[i + half] || null }));
-    // ຄິດຄວາມສູງແຖວ ໃຫ້ຕື່ມເຕັມ A4 ໜ້າດຽວ (budget ~149mm, ໃຊ້ 147 ເຫຼືອ buffer 2mm):
-    // 36ງວດ=19ແຖວ→7.74mm, 30=16→9.19mm, 24=13→11.31mm · ໜ້ອຍງວດ ສູງສຸດ 12mm
-    const rowMM = Math.min(12, 147 / half).toFixed(2);
+    // 3 ຖັນຊ້າຍ = 21 ແຖວ (ດາວ + ງວດ 1-20) · 3 ຖັນຂວາ = 16 ແຖວ (ງວດ 21-36)
+    // 5 ແຖວລຸ່ມສຸດຝັ່ງຂວາ ຮວມເປັນຊ່ອງດຽວ = ຜູ້ຮັບເງິນ + ກາຈ້ຳ (ບໍ່ຕີເສັ້ນຂວາ/ລຸ່ມ)
+    const LEFT_ROWS = 21, SIG_ROWS = 5;
+    const leftArr = src.slice(0, LEFT_ROWS);
+    const rightArr = src.slice(LEFT_ROWS);
+    const nRows = Math.max(LEFT_ROWS, rightArr.length + SIG_ROWS); // ງວດຫຼາຍກວ່າ 36 → ຂະຫຍາຍເອງ
+    const sigRow = nRows - SIG_ROWS;
+    const rows = Array.from({ length: nRows }, (_, i) => ({ L: leftArr[i] || null, R: rightArr[i] || null }));
+    // 21 ແຖວ → 8.57mm · ຊ່ອງລາຍເຊັນ 5 ແຖວ ≈ 43mm ພໍໃສ່ກາຈ້ຳ 28mm
+    const rowMM = Math.min(11, 180 / nRows).toFixed(2);
     return (
       <div className="rcpt-sheet max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[15px] leading-[1.8]">
         <style>{`
-          .rcpt-sheet .stamp { position: absolute; left: 50%; top: 22px; width: 118px;
-            transform: translateX(-50%) rotate(-8deg); opacity: .88; pointer-events: none; }
+          .rcpt-sheet .r-sigcell { position: relative; vertical-align: top; font-weight: 700;
+            border-right: 0 !important; border-bottom: 0 !important; }
+          /* ກຸ່ມລາຍເຊັນ: ວາງ absolute ທັງໝົດ → ຍັບໄປຂວາ ແລະ ລົງລຸ່ມ ໃຫ້ຂອບລຸ່ມ
+             ຢູ່ລະດັບດຽວກັນກັບແຖວ "ຮູບແບບການຈ່າຍເງິນ" (ລົ້ນອອກນອກຕາຕະລາງໄດ້ ເພາະບໍ່ມີເສັ້ນຂວາ/ລຸ່ມ) */
+          .rcpt-sheet .r-sig-label { position: absolute; left: 24mm; top: 17mm; width: 40mm;
+            text-align: center; font-size: 16px; }
+          .rcpt-sheet .stamp { position: absolute; left: 30mm; top: 25mm; width: 28mm;
+            transform: rotate(-2deg); opacity: .9; pointer-events: none; }
+          /* ຜູກທັງ left ແລະ right → ຊື່ຍາວຈະຕັດແຖວລົງ ບໍ່ລົ້ນອອກນອກຂອບເຈ້ຍ */
+          .rcpt-sheet .r-name { position: absolute; left: 48mm; right: 1mm; top: 45mm;
+            text-align: left; line-height: 1.25; font-weight: 700; font-size: 16px; }
           @media print {
             @page { size: A4 portrait; margin: 10mm 12mm; }
-            .rcpt-sheet .stamp { width: 32mm !important; top: 16px !important;
-              -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            .rcpt-sheet .stamp { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
             .rcpt-sheet { font-size: 13.5px !important; line-height: 1.6 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
             .rcpt-sheet .r-title { font-size: 19px !important; margin: 5px 0 !important; }
             .rcpt-sheet .co-name { font-size: 11px !important; }
@@ -432,7 +444,6 @@ export default function PrintPage() {
             .rcpt-sheet .r-info { font-size: 13px !important; }
             .rcpt-sheet .rcpt-tbl { font-size: 12.5px !important; }
             .rcpt-sheet .rcpt-tbl td { padding: 1px 5px !important; line-height: 1.25 !important; }
-            .rcpt-sheet .r-sig { margin-top: 24px !important; }
           }
         `}</style>
         <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
@@ -459,7 +470,7 @@ export default function PrintPage() {
           </div>
         </div>
 
-        <table className="rcpt-tbl w-full border-collapse border-2 border-black mt-3 text-center text-[14px]">
+        <table className="rcpt-tbl w-full border-collapse mt-3 text-center text-[14px]">
           <thead>
             <tr className="font-bold">
               <td className="border-2 border-black p-2 w-14">ລ/ດ</td>
@@ -476,9 +487,18 @@ export default function PrintPage() {
                 <td className="border-2 border-black px-2 font-bold">{r.L?.label ?? ""}</td>
                 <td className="border-2 border-black px-2 font-bold">{r.L?.paid ? fmt(r.L.paid, cur) : ""}</td>
                 <td className="border-2 border-black px-2">{r.L?.remaining != null ? (r.L.remaining > 0 ? fmt(r.L.remaining, cur) : "ຄົບແລ້ວ") : ""}</td>
-                <td className="border-2 border-black px-2 font-bold">{r.R?.label ?? ""}</td>
-                <td className="border-2 border-black px-2 font-bold">{r.R?.paid ? fmt(r.R.paid, cur) : ""}</td>
-                <td className="border-2 border-black px-2">{r.R?.remaining != null ? (r.R.remaining > 0 ? fmt(r.R.remaining, cur) : "ຄົບແລ້ວ") : ""}</td>
+                {i === sigRow ? (
+                  <td className="r-sigcell border-2 border-black px-2" colSpan={3} rowSpan={SIG_ROWS}>
+                    <div className="r-sig-label">ຜູ້ຮັບເງິນ</div>
+                    {/* ກາຈ້ຳບໍລິສັດ: ໄຟລ໌ public/stamp.png (PNG ໂປ່ງໃສ) — ບໍ່ມີໄຟລ໌ = ເຊື່ອງອັດຕະໂນມັດ */}
+                    <img src="/stamp.png" alt="" className="stamp" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                    <div className="r-name">{receiverName}</div>
+                  </td>
+                ) : i > sigRow ? null : (<>
+                  <td className="border-2 border-black px-2 font-bold">{r.R?.label ?? ""}</td>
+                  <td className="border-2 border-black px-2 font-bold">{r.R?.paid ? fmt(r.R.paid, cur) : ""}</td>
+                  <td className="border-2 border-black px-2">{r.R?.remaining != null ? (r.R.remaining > 0 ? fmt(r.R.remaining, cur) : "ຄົບແລ້ວ") : ""}</td>
+                </>)}
               </tr>
             ))}
           </tbody>
@@ -491,16 +511,6 @@ export default function PrintPage() {
           <label className="flex items-center gap-2 font-bold">
             <span className="w-6 h-6 border-2 border-black inline-flex items-center justify-center">{cash ? "" : "✓"}</span> ຈ່າຍເງິນໂອນ
           </label>
-        </div>
-
-        <div className="r-sig grid grid-cols-3 gap-8 mt-8 text-center font-bold">
-          <div>ຜູ້ຈ່າຍເງິນ<div className="mt-20 font-bold text-[14px]">{cu.full_name}</div></div>
-          <div className="relative">ຜູ້ຮັບເງິນ
-            {/* ກາຈ້ຳບໍລິສັດ: ວາງໄຟລ໌ public/stamp.png (PNG ພື້ນຫຼັງໂປ່ງໃສ) — ບໍ່ມີໄຟລ໌ = ເຊື່ອງອັດຕະໂນມັດ */}
-            <img src="/stamp.png" alt="" className="stamp" onError={(e) => { e.currentTarget.style.display = "none"; }} />
-            <div className="mt-20 font-bold text-[14px]">{receiverName}</div>
-          </div>
-          <div>ພະຍານ<div className="mt-20"></div></div>
         </div>
 
         <div className="no-print text-center text-[11px] text-slate-400 mt-8">
