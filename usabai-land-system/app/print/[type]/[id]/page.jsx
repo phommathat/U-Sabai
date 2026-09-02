@@ -117,6 +117,24 @@ export default function PrintPage() {
     })();
   }, [type, id]);
 
+  // ຊື່ໄຟລ໌ຕອນ "Save as PDF" = document.title → ຕັ້ງເປັນ ປະເພດເອກະສານ + ຊື່ລູກຄ້າ + ຕອນດິນ + ງວດ
+  useEffect(() => {
+    if (!d) return;
+    const prev = document.title;
+    const DOC = { receipt: "ໃບຮັບເງິນ", booking: "ໃບຈອງດິນ", deposit: "ໃບມັດຈຳ", contract: "ສັນຍາຊື້-ຂາຍດິນ", handover: "ໃບມອບໃບຕາດິນ" };
+    const clean = (x) => String(x || "").replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim();
+    const cu = d.customers || d.contracts?.customers || {};
+    const lot = d.lots?.code || d.contracts?.lots?.code || "";
+    let part = "";
+    if (type === "receipt") {
+      const sq = d.installments?.seq;
+      part = sq == null ? "ນອກງວດ" : sq === 0 ? "ດາວ" : `ງວດ ${sq}`;
+    }
+    const name = [DOC[type] || "ເອກະສານ", cu.full_name, lot, part].map(clean).filter(Boolean).join(" - ");
+    document.title = name;
+    return () => { document.title = prev; };
+  }, [d, type]);
+
   // ?auto=1 → ເປີດ dialog ພິມ/Save as PDF ອັດຕະໂນມັດ (ໃຊ້ສົ່ງ PDF ໃຫ້ລູກຄ້າ)
   useEffect(() => {
     if (d && new URLSearchParams(window.location.search).get("auto"))
@@ -401,8 +419,12 @@ export default function PrintPage() {
     return (
       <div className="rcpt-sheet max-w-[820px] mx-auto p-8 bg-white min-h-screen text-black text-[15px] leading-[1.8]">
         <style>{`
+          .rcpt-sheet .stamp { position: absolute; left: 50%; top: 22px; width: 118px;
+            transform: translateX(-50%) rotate(-8deg); opacity: .88; pointer-events: none; }
           @media print {
             @page { size: A4 portrait; margin: 10mm 12mm; }
+            .rcpt-sheet .stamp { width: 32mm !important; top: 16px !important;
+              -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
             .rcpt-sheet { font-size: 13.5px !important; line-height: 1.6 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
             .rcpt-sheet .r-title { font-size: 19px !important; margin: 5px 0 !important; }
             .rcpt-sheet .co-name { font-size: 11px !important; }
@@ -473,7 +495,11 @@ export default function PrintPage() {
 
         <div className="r-sig grid grid-cols-3 gap-8 mt-8 text-center font-bold">
           <div>ຜູ້ຈ່າຍເງິນ<div className="mt-20 font-bold text-[14px]">{cu.full_name}</div></div>
-          <div>ຜູ້ຮັບເງິນ<div className="mt-20 font-bold text-[14px]">{receiverName}</div></div>
+          <div className="relative">ຜູ້ຮັບເງິນ
+            {/* ກາຈ້ຳບໍລິສັດ: ວາງໄຟລ໌ public/stamp.png (PNG ພື້ນຫຼັງໂປ່ງໃສ) — ບໍ່ມີໄຟລ໌ = ເຊື່ອງອັດຕະໂນມັດ */}
+            <img src="/stamp.png" alt="" className="stamp" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+            <div className="mt-20 font-bold text-[14px]">{receiverName}</div>
+          </div>
           <div>ພະຍານ<div className="mt-20"></div></div>
         </div>
 
