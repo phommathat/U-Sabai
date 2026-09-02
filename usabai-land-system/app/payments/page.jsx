@@ -311,8 +311,7 @@ function Payments() {
             users[p.created_by] || "—",
             punctual(p),
             <span key="pr" className="flex gap-1">
-              <a className="btn-o !py-1 !px-2 text-sm" title="ພິມໃບມອບຮັບເງິນ" href={`/print/receipt/${p.id}`} target="_blank">🖨</a>
-              <a className="btn-o !py-1 !px-2 text-sm" title="ບັນທຶກເປັນ PDF ສົ່ງລູກຄ້າ" href={`/print/receipt/${p.id}?auto=1`} target="_blank">📄</a>
+              <a className="btn-o !py-1 !px-2 text-sm" title="ພິມ / ບັນທຶກເປັນ PDF ໃບມອບຮັບເງິນ" href={`/print/receipt/${p.id}`} target="_blank">🖨</a>
             </span>,
           ];
           })} />
@@ -452,7 +451,7 @@ function Payments() {
               </select>
             </Field>
             <div className="col-span-2 text-xs bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-emerald-800">
-              ເລກໃບຮັບເງິນອອກອັດຕະໂນມັດ (R-2026-XXXX) · ບັນທຶກແລ້ວກົດ 🖨 ຫຼື 📄 ໃນ tab ການຮັບເງິນງວດປະຈຳເດືອນ ເພື່ອສົ່ງໃຫ້ລູກຄ້າ
+              ເລກໃບຮັບເງິນອອກອັດຕະໂນມັດ (R-2026-XXXX) · ບັນທຶກແລ້ວກົດ 🖨 ໃນ tab ການຮັບເງິນງວດປະຈຳເດືອນ ເພື່ອພິມ ຫຼື ບັນທຶກເປັນ PDF ສົ່ງໃຫ້ລູກຄ້າ
             </div>
             <div className="col-span-2"><button className="btn-p w-full">💾 ບັນທຶກການຊຳລະ</button></div>
           </form>
