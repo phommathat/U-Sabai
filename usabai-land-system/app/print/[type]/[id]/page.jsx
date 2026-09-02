@@ -427,15 +427,15 @@ export default function PrintPage() {
             border-right: 0 !important; border-bottom: 0 !important; }
           /* ກຸ່ມລາຍເຊັນ: ວາງ absolute ທັງໝົດ → ຍັບໄປຂວາ ແລະ ລົງລຸ່ມ ໃຫ້ຂອບລຸ່ມ
              ຢູ່ລະດັບດຽວກັນກັບແຖວ "ຮູບແບບການຈ່າຍເງິນ" (ລົ້ນອອກນອກຕາຕະລາງໄດ້ ເພາະບໍ່ມີເສັ້ນຂວາ/ລຸ່ມ) */
-          .rcpt-sheet .r-sig-label { position: absolute; left: 7mm; top: 6mm; width: 40mm;
+          .rcpt-sheet .r-sig-label { position: absolute; left: 16mm; top: 6mm; width: 40mm;
             text-align: center; font-size: 16px; }
           /* ຂະໜາດຈິງ: ວົງນອກແປດຫຼ່ຽມ ≈ 36mm (ໄຟລ໌ມີ padding ~7% → width 38.5mm)
              ອ້າງອີງ: ວົງນອກ/ວົງໃນຊັ້ນ 2 ໃນຮູບ = 747/542 px = 1.378 ເທົ່າ */
-          .rcpt-sheet .stamp { position: absolute; left: 8mm; top: 14.5mm; width: 38.5mm;
+          .rcpt-sheet .stamp { position: absolute; left: 17mm; top: 14.5mm; width: 38.5mm;
             transform: rotate(-2deg); opacity: .9; pointer-events: none; }
           /* ຜູກທັງ left ແລະ right → ຊື່ຍາວຈະຕັດແຖວລົງ ບໍ່ລົ້ນອອກນອກຂອບເຈ້ຍ */
           .rcpt-sheet .r-payer { font-size: 16px; }
-          .rcpt-sheet .r-name { position: absolute; left: 35mm; right: 1mm; top: 46mm;
+          .rcpt-sheet .r-name { position: absolute; left: 44mm; right: 0; top: 46mm;
             text-align: left; line-height: 1.25; font-weight: 700; font-size: 16px; }
           @media print {
             @page { size: A4 portrait; margin: 10mm 12mm; }
