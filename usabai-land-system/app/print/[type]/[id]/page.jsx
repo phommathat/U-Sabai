@@ -54,7 +54,6 @@ export default function PrintPage() {
   const [rcptRows, setRcptRows] = useState([]); // ແຖວຕາຕະລາງໃບມອບຮັບເງິນ (ດາວ+ງວດ ພ້ອມປະຫວັດຊຳລະ)
   const [firstPay, setFirstPay] = useState(0); // ເງິນຮັບຄັ້ງທຳອິດ (fallback ເງິນດາວ/ງວດ 1 ຂອງສັນຍາ import)
   const [err, setErr] = useState("");
-  const [shot, setShot] = useState(false); // ກຳລັງສ້າງໄຟລ໌ຮູບ JPG
 
   useEffect(() => {
     (async () => {
@@ -146,51 +145,6 @@ export default function PrintPage() {
 
   const today = fdate(new Date().toISOString());
 
-  // ບັນທຶກເອກະສານເປັນຮູບ JPG — ໂຫຼດ html2canvas ຈາກ CDN ຕອນກົດ (ບໍ່ຕ້ອງເພີ່ມ dependency)
-  const saveJpg = async () => {
-    setShot(true);
-    try {
-      // ໂຫຼດຈາກ public/html2canvas.min.js ກ່ອນ (ໃຊ້ໄດ້ເຖິງບໍ່ມີເນັດນອກ) → ບໍ່ໄດ້ຈຶ່ງຕົກໄປ CDN
-      if (!window.html2canvas) {
-        const load = (src) => new Promise((ok, no) => {
-          const sc = document.createElement("script");
-          sc.src = src; sc.onload = ok; sc.onerror = () => no(new Error(src));
-          document.head.appendChild(sc);
-        });
-        await load("/html2canvas.min.js").catch(() =>
-          load("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"));
-      }
-      const el = document.querySelector(".rcpt-sheet, .contract-sheet, .dep-sheet, .bk-sheet") || document.body;
-      el.classList.add("shot");          // ບັງຄັບ layout A4 ຄືກັບ print
-      await new Promise((r) => setTimeout(r, 60)); // ລໍ browser ຄິດ layout ໃໝ່
-      const canvas = await window.html2canvas(el, {
-        scale: 2,                    // ຄວາມລະອຽດ 2 ເທົ່າ ໃຫ້ອ່ານໄດ້ຊັດ
-        backgroundColor: "#ffffff",
-        useCORS: true,
-        ignoreElements: (n) => n.classList && n.classList.contains("no-print"),
-      });
-      const a = document.createElement("a");
-      a.href = canvas.toDataURL("image/jpeg", 0.95);
-      a.download = (document.title || "ເອກະສານ") + ".jpg";
-      a.click();
-      el.classList.remove("shot");
-    } catch {
-      document.querySelectorAll(".shot").forEach((n) => n.classList.remove("shot"));
-      alert("ບັນທຶກຮູບບໍ່ສຳເລັດ — ກວດການເຊື່ອມຕໍ່ອິນເຕີເນັດ ຫຼື ໃຊ້ປຸ່ມ ພິມ → Save as PDF ແທນ");
-    } finally {
-      setShot(false);
-    }
-  };
-
-  // ແຖບປຸ່ມ: ພິມ/PDF + ບັນທຶກເປັນຮູບ JPG
-  const Actions = () => (
-    <div className="no-print flex gap-2 mb-6">
-      <button onClick={() => window.print()} className="btn-p flex-1">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
-      <button onClick={saveJpg} disabled={shot} className="btn-o flex-1">
-        {shot ? "⏳ ກຳລັງສ້າງຮູບ..." : "📷 ບັນທຶກເປັນ JPG"}
-      </button>
-    </div>
-  );
   // ຊື່ຜູ້ຂາຍ = ຜູ້ໃຊ້ລະບົບທີ່ອອກເອກະສານ (created_by) → fallback sales_person → ຜູ້ໃຊ້ປັດຈຸບັນ
   const docSellerName = creators[d?.created_by] || d?.sales_person || seller?.full_name;
   // ແຖວ "ຜູ້ຂາຍ" — ຊື່ຜູ້ອອກເອກະສານ + ທີ່ຢູ່ບໍລິສັດ (ຫວ່າງ = ຈຸດໆໃຫ້ຂຽນມື)
@@ -254,22 +208,8 @@ export default function PrintPage() {
             .contract-sheet .c-logo { width: 26mm !important; height: 26mm !important; }
             .contract-sheet .co-name { font-size: 11px !important; }
           }
-          /* .shot = ເປີດຕອນສ້າງໄຟລ໌ JPG → ບັງຄັບ layout ໃຫ້ຄືກັນກັບ print A4 ທຸກປະການ */
-            .contract-sheet.shot { font-size: 11.5px !important; line-height: 1.45 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
-            .contract-sheet.shot .c-title { font-size: 18px !important; margin: 5px 0 !important; }
-            .contract-sheet.shot .c-note { font-size: 10.5px !important; }
-            .contract-sheet.shot .sig-area { margin-top: 16px !important; }
-            .contract-sheet.shot .sig-gap { margin-top: 64px !important; }
-            .contract-sheet.shot .c-wit { margin-top: 34px !important; }
-            .contract-sheet.shot .c-logo-wrap { width: 26mm !important; }
-            .contract-sheet.shot .c-logo { width: 26mm !important; height: 26mm !important; }
-            .contract-sheet.shot .co-name { font-size: 11px !important; }
-          /* ເຕັມໜ້າ A4 ພ້ອມຂອບເຈ້ຍ → ຮູບອອກມາເປັນສັດສ່ວນ A4 ຄືກັບ PDF */
-          .contract-sheet.shot { width: 210mm !important; max-width: 210mm !important;
-            min-height: 297mm !important; padding: 7mm 12mm !important; margin: 0 !important; background: #fff !important; }
-          .contract-sheet.shot .no-print { display: none !important; }
         `}</style>
-        <Actions />
+        <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
         <div className="relative">
           <div className="c-logo-wrap absolute left-0 -top-1 w-28 text-center">
             <img src="/logo-mark.png" alt="U-Sabai" className="c-logo w-28 h-28 object-contain mx-auto" />
@@ -391,21 +331,8 @@ export default function PrintPage() {
             .dep-sheet .d-logo { width: 26mm !important; height: 26mm !important; }
             .dep-sheet .co-name { font-size: 11px !important; }
           }
-          /* .shot = ເປີດຕອນສ້າງໄຟລ໌ JPG → ບັງຄັບ layout ໃຫ້ຄືກັນກັບ print A4 ທຸກປະການ */
-            .dep-sheet.shot { font-size: 13.5px !important; line-height: 1.7 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
-            .dep-sheet.shot .d-title { font-size: 18px !important; margin: 5px 0 !important; }
-            .dep-sheet.shot .d-note { font-size: 12px !important; }
-            .dep-sheet.shot .sig-gap { margin-top: 68px !important; }
-            .dep-sheet.shot .d-wit { margin-top: 40px !important; }
-            .dep-sheet.shot .d-logo-wrap { width: 26mm !important; }
-            .dep-sheet.shot .d-logo { width: 26mm !important; height: 26mm !important; }
-            .dep-sheet.shot .co-name { font-size: 11px !important; }
-          /* ເຕັມໜ້າ A4 ພ້ອມຂອບເຈ້ຍ → ຮູບອອກມາເປັນສັດສ່ວນ A4 ຄືກັບ PDF */
-          .dep-sheet.shot { width: 210mm !important; max-width: 210mm !important;
-            min-height: 297mm !important; padding: 9mm 12mm !important; margin: 0 !important; background: #fff !important; }
-          .dep-sheet.shot .no-print { display: none !important; }
         `}</style>
-        <Actions />
+        <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
         <div className="relative">
           <div className="d-logo-wrap absolute left-0 -top-1 w-28 text-center">
             <img src="/logo-mark.png" alt="U-Sabai" className="d-logo w-28 h-28 object-contain mx-auto" />
@@ -522,21 +449,8 @@ export default function PrintPage() {
             .rcpt-sheet .rcpt-tbl { font-size: 12.5px !important; }
             .rcpt-sheet .rcpt-tbl td { padding: 1px 5px !important; line-height: 1.25 !important; }
           }
-          /* .shot = ເປີດຕອນສ້າງໄຟລ໌ JPG → ບັງຄັບ layout ໃຫ້ຄືກັນກັບ print A4 ທຸກປະການ */
-            .rcpt-sheet.shot .stamp { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-            .rcpt-sheet.shot { font-size: 13.5px !important; line-height: 1.6 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
-            .rcpt-sheet.shot .r-title { font-size: 19px !important; margin: 5px 0 !important; }
-            .rcpt-sheet.shot .co-name { font-size: 11px !important; }
-            .rcpt-sheet.shot .r-logo { width: 26mm !important; height: 26mm !important; }
-            .rcpt-sheet.shot .r-info { font-size: 13px !important; }
-            .rcpt-sheet.shot .rcpt-tbl { font-size: 12.5px !important; }
-            .rcpt-sheet.shot .rcpt-tbl td { padding: 1px 5px !important; line-height: 1.25 !important; }
-          /* ເຕັມໜ້າ A4 ພ້ອມຂອບເຈ້ຍ → ຮູບອອກມາເປັນສັດສ່ວນ A4 ຄືກັບ PDF */
-          .rcpt-sheet.shot { width: 210mm !important; max-width: 210mm !important;
-            min-height: 297mm !important; padding: 10mm 12mm !important; margin: 0 !important; background: #fff !important; }
-          .rcpt-sheet.shot .no-print { display: none !important; }
         `}</style>
-        <Actions />
+        <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
         <div className="relative">
           <div className="r-logo-wrap absolute left-0 -top-1 w-28 text-center">
             <img src="/logo-mark.png" alt="U-Sabai" className="r-logo w-28 h-28 object-contain mx-auto" />
@@ -630,20 +544,8 @@ export default function PrintPage() {
             .bk-sheet .b-sig { margin-top: 60px !important; }
             .bk-sheet .sig-gap { margin-top: 72px !important; }
           }
-          /* .shot = ເປີດຕອນສ້າງໄຟລ໌ JPG → ບັງຄັບ layout ໃຫ້ຄືກັນກັບ print A4 ທຸກປະການ */
-            .bk-sheet.shot { font-size: 14px !important; line-height: 2.0 !important; padding: 0 !important; max-width: 100% !important; min-height: 0 !important; }
-            .bk-sheet.shot .b-title { font-size: 18px !important; margin: 8px 0 !important; }
-            .bk-sheet.shot .b-logo-wrap { width: 26mm !important; }
-            .bk-sheet.shot .b-logo { width: 26mm !important; height: 26mm !important; }
-            .bk-sheet.shot .co-name { font-size: 11px !important; }
-            .bk-sheet.shot .b-sig { margin-top: 60px !important; }
-            .bk-sheet.shot .sig-gap { margin-top: 72px !important; }
-          /* ເຕັມໜ້າ A4 ພ້ອມຂອບເຈ້ຍ → ຮູບອອກມາເປັນສັດສ່ວນ A4 ຄືກັບ PDF */
-          .bk-sheet.shot { width: 210mm !important; max-width: 210mm !important;
-            min-height: 297mm !important; padding: 10mm 12mm !important; margin: 0 !important; background: #fff !important; }
-          .bk-sheet.shot .no-print { display: none !important; }
         `}</style>
-        <Actions />
+        <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
         <div className="relative">
           <div className="b-logo-wrap absolute left-0 -top-1 w-28 text-center">
             <img src="/logo-mark.png" alt="U-Sabai" className="b-logo w-28 h-28 object-contain mx-auto" />
@@ -692,7 +594,7 @@ export default function PrintPage() {
 
   return (
     <div className="max-w-[700px] mx-auto p-8 bg-white min-h-screen text-slate-800">
-      <Actions />
+      <button onClick={() => window.print()} className="no-print btn-p mb-6 w-full">🖨 ພິມ / ບັນທຶກເປັນ PDF</button>
 
       <div className="text-center border-b-2 border-navy pb-4 mb-5">
         <div className="text-2xl font-bold text-navy tracking-wider">U-<span className="text-slate-500">SABAI</span></div>
