@@ -12,6 +12,30 @@ const MoneyInput = ({ value, onChange, ...props }) => (
     onChange={(e) => { const raw = e.target.value.replace(/[^\d]/g, ""); onChange(raw === "" ? "" : Number(raw)); }} />
 );
 
+// ⚠️ ກັນການ "ຄີເງິນກີບ" ໃສ່ສັນຍາສະກຸນ ฿/$ (ບໍ່ໄດ້ແປງສະກຸນກ່ອນຄີ)
+const BIG_FX_LIMIT = 3000000; // ຈຳນວນ ฿/$ ບໍ່ຄວນເກີນນີ້ໃນການຮັບເງິນ 1 ຄັ້ງ
+const isBigFx = (amt, cur) => !!cur && cur !== "LAK" && Number(amt || 0) > BIG_FX_LIMIT;
+const bigFxMsg = (amt, cur, fx) => {
+  const rate = Number((fx || {})[cur] || 0);
+  const conv = rate > 0 ? Math.round(Number(amt) / rate) : null;
+  return `⚠️ ຈຳນວນ ${Number(amt).toLocaleString()} ${cur} ໃຫຍ່ຜິດປົກກະຕິ (ເກີນ ${BIG_FX_LIMIT.toLocaleString()}).\n`
+    + `ຖ້ານີ້ແມ່ນຈຳນວນເງິນກີບ ໃຫ້ກົດ Cancel ແລ້ວແກ້ໄຂກ່ອນ`
+    + (conv ? ` (≈ ${conv.toLocaleString()} ${cur} ທີ່ອັດຕາ ${rate.toLocaleString()} ₭/${cur})` : "") + ".\n\n"
+    + "ຢືນຢັນບັນທຶກຕາມຈຳນວນນີ້ບໍ?";
+};
+const FxWarn = ({ amount, currency, fx }) => {
+  if (!isBigFx(amount, currency)) return null;
+  const rate = Number((fx || {})[currency] || 0);
+  const conv = rate > 0 ? Math.round(Number(amount) / rate) : null;
+  return (
+    <div className="col-span-2 text-sm bg-amber-50 border-2 border-amber-400 rounded-lg p-3 text-amber-900">
+      ⚠️ <b>ກວດຈຳນວນເງິນອີກຄັ້ງ</b> — ສະກຸນທີ່ເລືອກແມ່ນ <b>{currency}</b> ແຕ່ຈຳນວນ <b>{Number(amount).toLocaleString()}</b> ໃຫຍ່ຜິດປົກກະຕິ (ເກີນ {BIG_FX_LIMIT.toLocaleString()}).
+      {conv ? <> ຖ້ານີ້ແມ່ນຈຳນວນເງິນ<b>ກີບ</b> ຄວນຄີເປັນ <b>{conv.toLocaleString()} {currency}</b> (ອັດຕາ {rate.toLocaleString()} ₭/{currency}).</> : null}
+      {" "}ຫຼື ປ່ຽນສະກຸນເປັນ <b>LAK</b>.
+    </div>
+  );
+};
+
 function Payments() {
   const { projectIds, projects, profile } = useApp();
   const [users, setUsers] = useState({}); // id → ຊື່ຜູ້ໃຊ້ລະບົບ (ສະແດງຜູ້ຮັບເງິນ)
@@ -24,9 +48,12 @@ function Payments() {
   const [addForm, setAddForm] = useState(null); // ຟອມເພີ່ມການຊຳລະງວດ (cascade)
   const [drill, setDrill] = useState(null);     // contract_id ທີ່ເປີດເບິ່ງລາຍບຸກຄົນ
   const [tab, setTab] = useState("month");      // default = ການຮັບເງິນງວດປະຈຳເດືອນ
+  const [fx, setFx] = useState({});               // ອັດຕາແລກປ່ຽນ (rate_to_lak) ໃຊ້ໃນຄຳເຕືອນ
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); // ເດືອນທີ່ເບິ່ງ (YYYY-MM)
 
   const load = async () => {
+    const { data: fxr } = await supabase.from("fx_rates").select("currency,rate_to_lak");
+    setFx(Object.fromEntries((fxr || []).map((r) => [r.currency, Number(r.rate_to_lak)])));
     if (!projectIds.length) return;
     const { data: cons } = await supabase.from("contracts")
       .select("id,contract_no,currency,sale_price,sign_date,pay_type,project_id, customers(full_name,tel), lots(code)").in("project_id", projectIds);
@@ -154,6 +181,7 @@ function Payments() {
 
   const receive = async (e) => {
     e.preventDefault();
+    if (isBigFx(form.amount_received, form.currency) && !confirm(bigFxMsg(form.amount_received, form.currency, fx))) return;
     const { data: receiptNo, error: numErr } = await supabase.rpc("next_receipt_no");
     if (numErr) return alert("ອອກເລກໃບຮັບເງິນບໍ່ໄດ້: " + numErr.message);
     const { error } = await supabase.from("payments").insert({
@@ -193,6 +221,7 @@ function Payments() {
   const saveAdd = async (e) => {
     e.preventDefault();
     if (!addForm.contract_id) return alert("ກະລຸນາເລືອກຕອນດິນກ່ອນ");
+    if (isBigFx(addForm.amount_received, addForm.currency) && !confirm(bigFxMsg(addForm.amount_received, addForm.currency, fx))) return;
     const { data: receiptNo, error: numErr } = await supabase.rpc("next_receipt_no");
     if (numErr) return alert("ອອກເລກໃບຮັບເງິນບໍ່ໄດ້: " + numErr.message);
     const { error } = await supabase.from("payments").insert({
@@ -450,6 +479,7 @@ function Payments() {
                 <option>ເງິນສົດ</option><option>ໂອນ BCEL</option><option>ໂອນ LDB</option><option>ໂອນທະນາຄານອື່ນ</option>
               </select>
             </Field>
+            <FxWarn amount={addForm.amount_received} currency={addForm.currency} fx={fx} />
             <div className="col-span-2 text-xs bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-emerald-800">
               ເລກໃບຮັບເງິນອອກອັດຕະໂນມັດ (R-2026-XXXX) · ບັນທຶກແລ້ວກົດ 🖨 ໃນ tab ການຮັບເງິນງວດປະຈຳເດືອນ ເພື່ອພິມ ຫຼື ບັນທຶກເປັນ PDF ສົ່ງໃຫ້ລູກຄ້າ
             </div>
@@ -478,6 +508,7 @@ function Payments() {
               </select>
             </Field>
             <Field label="ເລກໃບຮັບເງິນ"><input className="inp bg-slate-50" disabled value="ອອກອັດຕະໂນມັດ (R-2026-XXXX)" /></Field>
+            <FxWarn amount={form.amount_received} currency={form.currency} fx={fx} />
             <div className="col-span-2 text-xs bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-emerald-800">
               ຮັບໜ້ອຍກວ່າກຳນົດ = ຍອດຄ້າງຍັງຄົງຄ້າງໃນງວດນີ້ · ບັນທຶກແລ້ວກົດ 🖨 ໃບມອບຮັບເງິນ ໃນ tab ການຮັບເງິນງວດປະຈຳເດືອນ
             </div>
