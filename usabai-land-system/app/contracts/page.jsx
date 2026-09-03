@@ -7,6 +7,32 @@ import { fmt, fdate, PAY_TYPE, CONTRACT_STATUS, buildInstallments } from "@/lib/
 
 const ST_COLOR = { booking: "amber", paying: "blue", overdue: "red", completed: "green", cancelled: "gray" };
 const num = (v) => (v === "" || v == null ? null : v);
+const N = (v) => Number(v || 0);
+// ເງິນທີ່ຮັບແລ້ວມື້ເຮັດສັນຍາ ຕາມທີ່ຄີໃນຟອມ (ຕ້ອງກົງກັບ payments ທີ່ຈະສ້າງໃນ save())
+const autoReceived = (f) => {
+  if (!f) return 0;
+  let t = N(f.booking_fee);
+  if (f.pay_type === "installment" && f.down_received !== false) t += N(f.down_payment);
+  if (f.pay_type === "cash") {
+    if (f.cash_pay1_received !== false) t += N(f.cash_pay1);
+    if (f.cash_pay2_received === true) t += N(f.cash_pay2);
+  }
+  return t;
+};
+// ປ່ຽນປະເພດການຊຳລະ → ລ້າງຊ່ອງຂອງປະເພດເກົ່າ
+// (ຖ້າບໍ່ລ້າງ: ຄີເງິນດາວໄວ້ແລ້ວປ່ຽນເປັນ "ຈ່າຍສົດ" → down_payment ຍັງຖືກບັນທຶກລົງສັນຍາ
+//  ເຮັດໃຫ້ໃບພິມສັນຍາ ກັບ ຂໍ້ມູນການຊຳລະ ບໍ່ຕົງກັນ)
+const clearPayFields = (f, t) => ({
+  ...f, pay_type: t,
+  ...(t === "installment"
+    ? { cash_pay1: "", cash_pay2: "", cash_pay1_received: undefined, cash_pay2_received: undefined }
+    : { down_payment: "", down_received: undefined, n_installments: "", installment_amt: "", first_due_date: "" }),
+  ...(t === "cash" ? {} : { cash_pay1: "", cash_pay2: "" }),
+  ...(t === "other" || t === "bank" ? {} : { pay_other: "" }),
+});
+// ⚠️ ກັນຄີເງິນກີບໃສ່ສັນຍາສະກຸນ ฿/$
+const BIG_FX_LIMIT = 3000000;
+const isBigFx = (amt, cur) => !!cur && cur !== "LAK" && N(amt) > BIG_FX_LIMIT;
 
 function Contracts() {
   const { projectId, projectIds, project, profile } = useApp();
@@ -94,6 +120,10 @@ function Contracts() {
       contractNo = no;
     }
     // 3) ບັນທຶກສັນຍາ — ພະນັກງານຂາຍດຶງ auto ຈາກ account ທີ່ login
+    //    ຮັບຄົບ 100% ມື້ເຮັດສັນຍາ (ຈ່າຍສົດ) → ສະຖານະ = ສຳເລັດ ບໍ່ແມ່ນ ກຳລັງຜ່ອນ
+    const recvNow = autoReceived(form);
+    const salePrice = N(form.sale_price);
+    const autoStatus = salePrice > 0 && recvNow >= salePrice ? "completed" : form.status;
     const c = {
       contract_no: contractNo, project_id: projectId, lot_id: form.lot_id, customer_id: customerId,
       sign_date: form.sign_date, pay_type: form.pay_type,
@@ -103,7 +133,7 @@ function Contracts() {
       n_installments: num(form.n_installments), installment_period_months: form.installment_period_months || 1,
       installment_amt: num(form.installment_amt), first_due_date: num(form.first_due_date),
       cash_pay1: num(form.cash_pay1), cash_pay2: num(form.cash_pay2),
-      balance_due_when: form.balance_due_when, status: form.status,
+      balance_due_when: form.balance_due_when, status: autoStatus,
       sales_person: profile?.full_name || null,
       created_by: profile?.id || null, // ຜູ້ໃຊ້ລະບົບທີ່ອອກສັນຍາ — ໃຊ້ເປັນ "ຜູ້ຂາຍ" ຕອນປຣິນ + ກວດຄືນ
     };
@@ -134,13 +164,30 @@ function Contracts() {
         note: "ຈ່າຍກ່ອນ — ເງິນດາວມື້ເຮັດສັນຍາ (ບັນທຶກ auto ຈາກຟອມສັນຍາ)",
         created_by: profile?.id || null,
       });
+    // 4.3 ຈ່າຍສົດ ງວດ 1 / ງວດ 2 ທີ່ຮັບແລ້ວ — ຜູກ installment_id ຕາມ seq
+    //     (ກ່ອນນີ້ບໍ່ໄດ້ສ້າງ payment ເລີຍ → ໜ້າຊຳລະສະແດງ "ຊຳລະແລ້ວ 0" ທັ້ງທີ່ລູກຄ້າຈ່າຍສົດ 100%)
+    if (c.pay_type === "cash") {
+      if (Number(form.cash_pay1) > 0 && form.cash_pay1_received !== false)
+        autoPays.push({
+          contract_id: data.id, installment_id: instRows.find((r) => r.seq === 1)?.id || null,
+          pay_date: c.sign_date, amount_received: form.cash_pay1, currency: c.currency, channel: "ເງິນສົດ",
+          note: "ຈ່າຍສົດ ງວດ 1 ມື້ເຮັດສັນຍາ (ບັນທຶກ auto ຈາກຟອມສັນຍາ)", created_by: profile?.id || null,
+        });
+      if (Number(form.cash_pay2) > 0 && form.cash_pay2_received === true)
+        autoPays.push({
+          contract_id: data.id, installment_id: instRows.find((r) => r.seq === 2)?.id || null,
+          pay_date: c.sign_date, amount_received: form.cash_pay2, currency: c.currency, channel: "ເງິນສົດ",
+          note: "ຈ່າຍສົດ ງວດ 2 (ບັນທຶກ auto ຈາກຟອມສັນຍາ)", created_by: profile?.id || null,
+        });
+    }
     for (const pay of autoPays) {
       const { data: rno } = await supabase.rpc("next_receipt_no");
       await supabase.from("payments").insert({ ...pay, receipt_no: rno || null });
     }
     await supabase.from("lots").update({ status: "sold" }).eq("id", c.lot_id);
     setForm(null); load();
-    alert(`ບັນທຶກສັນຍາ ${contractNo} ສຳເລັດ — ສ້າງ ${inst.length} ງວດອັດຕະໂນມັດ`);
+    const recvSum = autoPays.reduce((t, p) => t + N(p.amount_received), 0);
+    alert(`ບັນທຶກສັນຍາ ${contractNo} ສຳເລັດ\n· ສ້າງ ${inst.length} ງວດອັດຕະໂນມັດ\n· ບັນທຶກການຮັບເງິນ ${autoPays.length} ລາຍການ ລວມ ${recvSum.toLocaleString()} ${c.currency}\n· ຍອດຄ້າງ ${(salePrice - recvSum).toLocaleString()} ${c.currency}`);
   };
 
   const pg = usePager(rows, [projectIds]); // 50 ສັນຍາ/ໜ້າ
@@ -224,7 +271,7 @@ function Contracts() {
             <Field label="ເງິນມື້ຈອງ (ຖ້າມີ — ຄີສະເພາະທີ່ຮັບແລ້ວ)"><input className="inp" type="number" value={form.booking_fee || ""} onChange={(e) => setForm({ ...form, booking_fee: e.target.value })} /></Field>
             <Field label="ຈຳນວນໃບຕາດິນ (ຕອນ)"><input className="inp" type="number" value={form.n_deeds ?? ""} placeholder="1" onChange={(e) => setForm({ ...form, n_deeds: e.target.value })} /></Field>
             <Field label="ປະເພດການຊຳລະ *">
-              <select className="inp" value={form.pay_type} onChange={(e) => setForm({ ...form, pay_type: e.target.value })}>
+              <select className="inp" value={form.pay_type} onChange={(e) => setForm(clearPayFields(form, e.target.value))}>
                 <option value="installment">ຜ່ອນເປັນງວດ</option>
                 <option value="cash">ຈ່າຍສົດ (ກຳນົດງວດເອງ)</option>
                 <option value="bank">ຜ່ານທະນາຄານ</option>
@@ -253,8 +300,22 @@ function Contracts() {
               <Field label="ວັນນັດຈ່າຍງວດທຳອິດ * (ວັນທີໃນເດືອນ = ວັນນັດປະຈຳທຸກເດືອນ)"><input className="inp" type="date" required value={form.first_due_date || ""} onChange={(e) => setForm({ ...form, first_due_date: e.target.value })} /></Field>
             </>)}
             {isCash && (<>
-              <Field label="ຈ່າຍສົດ ງວດ 1 *"><input className="inp" type="number" required value={form.cash_pay1 || ""} onChange={(e) => setForm({ ...form, cash_pay1: e.target.value })} /></Field>
-              <Field label="ຈ່າຍສົດ ງວດ 2 (ຖ້າມີ)"><input className="inp" type="number" value={form.cash_pay2 || ""} onChange={(e) => setForm({ ...form, cash_pay2: e.target.value })} /></Field>
+              <Field label="ຈ່າຍສົດ ງວດ 1 *">
+                <input className="inp" type="number" required value={form.cash_pay1 || ""} onChange={(e) => setForm({ ...form, cash_pay1: e.target.value })} />
+                <label className="flex items-center gap-1 text-xs mt-1">
+                  <input type="checkbox" checked={form.cash_pay1_received !== false}
+                    onChange={(e) => setForm({ ...form, cash_pay1_received: e.target.checked })} />
+                  ຮັບເງິນນີ້ແລ້ວ — ບັນທຶກເປັນລາຍການຮັບເງິນ ວັນທີເຮັດສັນຍາ
+                </label>
+              </Field>
+              <Field label="ຈ່າຍສົດ ງວດ 2 (ຖ້າມີ)">
+                <input className="inp" type="number" value={form.cash_pay2 || ""} onChange={(e) => setForm({ ...form, cash_pay2: e.target.value })} />
+                <label className="flex items-center gap-1 text-xs mt-1">
+                  <input type="checkbox" checked={form.cash_pay2_received === true}
+                    onChange={(e) => setForm({ ...form, cash_pay2_received: e.target.checked })} />
+                  ຮັບເງິນນີ້ແລ້ວ (ຕິກສະເພາະເມື່ອຮັບໃນມື້ເຮັດສັນຍາ)
+                </label>
+              </Field>
               <Field label="ສ່ວນທີ່ເຫຼືອຈ່າຍເມື່ອ">
                 <select className="inp" value={form.balance_due_when} onChange={(e) => setForm({ ...form, balance_due_when: e.target.value })}>
                   <option value="after_deed_transfer">ຫຼັງໂອນຊື່ໃບຕາດິນສຳເລັດ</option>
@@ -264,14 +325,62 @@ function Contracts() {
               </Field>
             </>)}
             <Field label="ພະນັກງານຂາຍ (auto ຈາກ account)"><input className="inp bg-slate-50" disabled value={profile?.full_name || "—"} /></Field>
-            <div className="col-span-2 text-xs bg-blue-50 border border-blue-200 rounded-lg p-3 text-blue-800">
-              ບັນທຶກແລ້ວ: ຕອນດິນລັອກເປັນ "ຂາຍແລ້ວ" + ສ້າງຕາຕະລາງງວດອັດຕະໂນມັດ · ເງິນມື້ຈອງທີ່ຄີ ຈະບັນທຶກເປັນການຮັບເງິນອັດຕະໂນມັດ (ນັບເຂົ້າເກນ 20%) · ເງິນມື້ເຮັດສັນຍາ = ງວດ 0 ໃຫ້ໄປກົດ "ຮັບເງິນ" ໃນໜ້າຊຳລະເງິນ
-            </div>
+            <Summary form={form} />
             <div className="col-span-2"><button className="btn-p w-full">💾 ບັນທຶກສັນຍາ</button></div>
           </form>
         )}
       </Modal>
     </>
+  );
+}
+
+// ສະຫຼຸບກ່ອນບັນທຶກ — ໃຫ້ພະນັກງານເຫັນວ່າຕົວເລກໃນຟອມ ຈະກາຍເປັນຂໍ້ມູນການຊຳລະແນວໃດ
+function Summary({ form }) {
+  const cur = form.currency || "LAK";
+  const sale = N(form.sale_price);
+  const plan = buildInstallments({
+    pay_type: form.pay_type, sign_date: form.sign_date, sale_price: sale,
+    down_payment: form.down_payment, n_installments: form.n_installments,
+    installment_period_months: form.installment_period_months, installment_amt: form.installment_amt,
+    first_due_date: form.first_due_date, cash_pay1: form.cash_pay1, cash_pay2: form.cash_pay2,
+    balance_due_when: form.balance_due_when,
+  });
+  const planSum = plan.reduce((t, r) => t + N(r.amount_due), 0);
+  const recv = autoReceived(form);
+  const gap = sale - planSum;
+  const bigs = [
+    ["ລາຄາຂາຍ", form.sale_price], ["ເງິນມື້ຈອງ", form.booking_fee],
+    ["ເງິນດາວ", form.down_payment], ["ເງິນຕໍ່ງວດ", form.installment_amt],
+    ["ຈ່າຍສົດ ງວດ 1", form.cash_pay1], ["ຈ່າຍສົດ ງວດ 2", form.cash_pay2],
+  ].filter(([, v]) => isBigFx(v, cur));
+  const Row = ({ k, v, red }) => (
+    <div className="flex justify-between gap-4"><span>{k}</span>
+      <b className={red ? "text-brand-red" : ""}>{fmt(v, cur)}</b></div>
+  );
+  return (
+    <div className="col-span-2 space-y-2">
+      {bigs.length > 0 && (
+        <div className="text-sm bg-amber-50 border-2 border-amber-400 rounded-lg p-3 text-amber-900">
+          ⚠️ <b>ກວດຈຳນວນເງິນອີກຄັ້ງ</b> — ສະກຸນທີ່ເລືອກແມ່ນ <b>{cur}</b> ແຕ່ຊ່ອງລຸ່ມນີ້ໃຫຍ່ຜິດປົກກະຕິ (ເກີນ {BIG_FX_LIMIT.toLocaleString()}), ອາດຄີເປັນ<b>ເງິນກີບ</b>:{" "}
+          {bigs.map(([k, v]) => `${k} ${Number(v).toLocaleString()}`).join(" · ")}
+        </div>
+      )}
+      {sale > 0 && plan.length > 0 && Math.abs(gap) > 1 && (
+        <div className="text-sm bg-amber-50 border-2 border-amber-400 rounded-lg p-3 text-amber-900">
+          ⚠️ <b>ແຜນງວດບໍ່ກົງກັບລາຄາຂາຍ</b> — ລວມທຸກງວດ {fmt(planSum, cur)} ຕ່າງຈາກລາຄາຂາຍ {fmt(sale, cur)} ຢູ່ <b>{fmt(Math.abs(gap), cur)}</b> ({gap > 0 ? "ຂາດ" : "ເກີນ"}). ກວດ ເງິນດາວ / ຈຳນວນງວດ / ເງິນຕໍ່ງວດ ຄືນ.
+        </div>
+      )}
+      <div className="text-xs bg-blue-50 border border-blue-200 rounded-lg p-3 text-blue-900 space-y-1">
+        <div className="font-bold mb-1">ສະຫຼຸບກ່ອນບັນທຶກ ({plan.length} ງວດ)</div>
+        <Row k="ລາຄາຂາຍ" v={sale} />
+        <Row k="ລວມແຜນງວດທີ່ຈະສ້າງ" v={planSum} />
+        <Row k="ຈະບັນທຶກເປັນການຮັບເງິນທັນທີ (ມື້ເຮັດສັນຍາ)" v={recv} />
+        <Row k="ຍອດຄ້າງຫຼັງບັນທຶກ" v={sale - recv} red={sale - recv > 0} />
+        <div className="pt-1 border-t border-blue-200 text-[11px] text-blue-700">
+          ຕອນດິນຈະລັອກເປັນ "ຂາຍແລ້ວ" · ເງິນທີ່ຕິກ "ຮັບເງິນນີ້ແລ້ວ" ຈະສ້າງໃບຮັບເງິນອັດຕະໂນມັດ (ນັບເຂົ້າເກນ 20%) · ຮັບຄົບ 100% → ສະຖານະສັນຍາ = ສຳເລັດ
+        </div>
+      </div>
+    </div>
   );
 }
 
